@@ -16,6 +16,7 @@ using ACMESharp.ACME;
 using ACMESharp.JOSE;
 using ACMESharp.PKI;
 using ACMESharp.HTTP;
+using ACMESharp.PKI.RSA;
 
 namespace LetsEncryptIIS
 {
@@ -298,7 +299,7 @@ namespace LetsEncryptIIS
 			Log("\tChallengeGetCertAndInstall ended");
 		}
 
-		private string GetIssuerCertificate(CertificateRequest certificate, CertificateProvider cp)
+		private string GetIssuerCertificate(ACMESharp.CertificateRequest certificate, CertificateProvider cp)
 		{
 			Log("\t\t\t\tGetIssuerCertificate started");
 
@@ -386,7 +387,7 @@ namespace LetsEncryptIIS
 				derBytes = ms.ToArray();
 			}
 
-			CertificateRequest requestCertificate = null;
+			ACMESharp.CertificateRequest requestCertificate = null;
 			var derBase64UrlEncoded = JwsHelper.Base64UrlEncode(derBytes);
 			try
 			{
