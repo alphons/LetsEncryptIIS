@@ -23,6 +23,7 @@ LetsEncryptIIS staging
 There is one configuration file **settings.json** which can contain multiple domain names.
 
 The **PFXPassword** is used for storing the .pfx files.
+
 For connecting to letsencrypt an email adres **Contact** has to be specified.
 
 If there are errors validating domain challenges the log is send by email.
