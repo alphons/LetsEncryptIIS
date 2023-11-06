@@ -7,9 +7,11 @@ using LetsEncryptIIS;
 // ( Lokale computer / Vertrouwde basiscertificieringsinstanties / Certificaten )
 // The .pem file is used at runtime, does not need to be installed
 
+var staging = (args.Length > 0 && args[0] == "staging");
+
 #pragma warning disable CA1416
 if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
-	await CertHelper.LetsEncryptDomainsAsync(false);
+	await CertHelper.LetsEncryptDomainsAsync(staging);
 else
 	Console.WriteLine("run as administator");
 #pragma warning restore CA1416
