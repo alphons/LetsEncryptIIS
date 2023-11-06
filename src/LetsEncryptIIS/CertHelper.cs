@@ -13,7 +13,7 @@ using System.Text;
 using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
 
-namespace LetsEncryptIIS2Core;
+namespace LetsEncryptIIS;
 
 public class CertHelper
 {
@@ -475,7 +475,7 @@ public class CertHelper
 
 		try
 		{
-			log.AppendLine($"LetsEncryptDomainsAsync started {DateTime.Now}");
+			log.AppendLine($"LetsEncryptDomains started {DateTime.Now}");
 
 			var domains = Settings.Get<List<string>>("Domains") ?? 
 				throw new Exception("Domains is null in settings.json");
@@ -509,7 +509,7 @@ public class CertHelper
 				await RefreshBindingsAsync(log);
 			}
 
-			log.AppendLine($"LetsEncryptDomainsAsync ended (normal) took {sw.Elapsed}");
+			log.AppendLine($"LetsEncryptDomains ended (normal) took {sw.Elapsed}");
 		}
 		catch(Exception eee)
 		{

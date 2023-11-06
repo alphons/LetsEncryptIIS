@@ -10,7 +10,7 @@
   <ItemGroup>
     <None Remove="acme-staging\letsencrypt-stg-root-x1.der" />
     <None Remove="acme-staging\letsencrypt-stg-root-x1.pem" />
-    <None Remove="settings-example.json" />
+    <None Remove="example-settings.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -20,7 +20,7 @@
     <Content Include="acme-staging\letsencrypt-stg-root-x1.pem">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="settings-example.json">
+    <Content Include="example-settings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
