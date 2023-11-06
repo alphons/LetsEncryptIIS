@@ -1,0 +1,43 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="acme-staging\letsencrypt-stg-root-x1.der" />
+    <None Remove="acme-staging\letsencrypt-stg-root-x1.pem" />
+    <None Remove="settings-example.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="acme-staging\letsencrypt-stg-root-x1.der">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="acme-staging\letsencrypt-stg-root-x1.pem">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="settings-example.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Certes" Version="3.0.4" />
+    <PackageReference Include="Microsoft.Web.Administration" Version="11.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Vimexx_API\Vimexx_API.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="servers.xml">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
