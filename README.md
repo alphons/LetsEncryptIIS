@@ -35,7 +35,7 @@ Refreshing certicates when time is running out **CertDaysBeforeExpire** prevents
 For checking and refreshing IIS https bindings, the location of **LocalConfig** must be set.
 
 As an example, the DNS provider **Vimexx** is used.
-These credentials **VimexxClientId, VimexxClientKey, VimexxUsername, VimexxPassword** must be set.
+These credentials **VimexxClientId,VimexxClientKey,VimexxUsername,VimexxPassword** must be set.
 
 The **CSR** information is optional, but it does not hurt to specify your own.
 
