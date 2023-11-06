@@ -5,6 +5,8 @@
 *.suo
 *.user
 *.sln.docstates
+*.pubxml
+settings.json
 
 # Build results
 
