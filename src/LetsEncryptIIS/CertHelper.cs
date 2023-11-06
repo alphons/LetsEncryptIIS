@@ -35,7 +35,6 @@ public class CertHelper
 				X509KeyStorageFlags.Exportable);
 
 			store.Add(certificate);
-			//	site.CertificateHash = (byte[])certificate.GetCertHash().Clone();
 			store.Close();
 		}
 		catch(Exception e)
@@ -207,7 +206,7 @@ public class CertHelper
 			}
 			await smtpclient.SendMailAsync(msg);
 		}
-		catch // (Exception ee)
+		catch
 		{
 		}
 	}
@@ -450,6 +449,7 @@ public class CertHelper
 			}
 		}
 
+		// CommitChanges should be ready in 1 try...
 		for (int intI = 0; intI < 60; intI++)
 		{
 			try
@@ -465,6 +465,21 @@ public class CertHelper
 		}
 
 		log.AppendLine($"\tRefreshBindingsAsync took {sw.ElapsedMilliseconds}mS");
+	}
+
+	async private static Task SaveLogAsync(string log)
+	{
+		try
+		{
+			var path = Path.Combine(AppContext.BaseDirectory, "Log", DateTime.Now.ToString("yyyyMMdd") + ".txt");
+			var dir = Path.GetDirectoryName(path) ?? @"c:\temp";
+			if (!System.IO.Directory.Exists(dir))
+				System.IO.Directory.CreateDirectory(dir);
+			await File.AppendAllTextAsync(path, log.ToString());
+		}
+		catch
+		{
+		}
 	}
 
 	async public static Task LetsEncryptDomainsAsync(bool UseStaging = false)
@@ -517,10 +532,6 @@ public class CertHelper
 			await MailRapportAsync(log.ToString());
 		}
 
-		var path = Path.Combine(AppContext.BaseDirectory, "Log", DateTime.Now.ToString("yyyyMMdd") + ".txt");
-		var dir = Path.GetDirectoryName(path) ?? @"c:\temp";
-		if (!System.IO.Directory.Exists(dir))
-			System.IO.Directory.CreateDirectory(dir);
-		await File.AppendAllTextAsync(path, log.ToString());
+		await SaveLogAsync(log.ToString());
 	}
 }
