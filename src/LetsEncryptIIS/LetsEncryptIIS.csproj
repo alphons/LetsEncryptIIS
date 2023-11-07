@@ -5,6 +5,8 @@
     <TargetFramework>net7.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+	<Version>7.0.0.1</Version>
+	<Copyright>Van der Heijden Holding BV</Copyright>
   </PropertyGroup>
 
   <ItemGroup>
