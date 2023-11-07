@@ -1,17 +1,14 @@
 ﻿using Certes;
-using Certes.Pkcs;
 using Certes.Acme;
 using Certes.Acme.Resource;
-
+using Certes.Pkcs;
 using Microsoft.Web.Administration;
-
-using Vimexx_API;
-
+using System.Diagnostics;
 using System.Net;
 using System.Net.Mail;
-using System.Text;
-using System.Diagnostics;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
+using Vimexx_API;
 
 namespace LetsEncryptIIS;
 
@@ -39,7 +36,7 @@ public class CertHelper
 		}
 		catch(Exception e)
 		{
-			log.AppendLine($"\t\t\tError: AddCertToStoreAsync {e.Message}");
+			log.AppendLine($"\t\t\tAddCertToStor ERROR {e.Message}");
 		}
 		log.AppendLine($"\t\t\tAdd {PathToPfx} to cert store {sw.ElapsedMilliseconds}ms");
 	}
@@ -54,7 +51,7 @@ public class CertHelper
 			Settings.Get("VimexxClientKey"),
 			Settings.Get("VimexxUsername"),
 			Settings.Get("VimexxPassword"));
-		log.AppendLine($"\tGetApiAsync took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\tGetVimexxApi {sw.ElapsedMilliseconds}ms");
 		return vimexxApi;
 	}
 
@@ -68,7 +65,7 @@ public class CertHelper
 			_ = await vimexxApi.LetsEncryptAsync(res.Identifier.Value, new List<string>());
 			_ = await authz.Deactivate();
 		}
-		log.AppendLine($"\t\t\tClearAuthorizations took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tClearAuthorizations {sw.ElapsedMilliseconds}ms");
 	}
 
 	async private static Task<IOrderContext?> AuthzDns(StringBuilder log, AcmeContext acmeContext, VimexxApi vimexxApi, string[] hosts)
@@ -99,7 +96,7 @@ public class CertHelper
 			dict[domain].Add(dnsTxt);
 		}
 
-		log.AppendLine($"\t\t\t\tGet Dns challenges took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\t\tAuthzDns (getting challenges) {sw.ElapsedMilliseconds}ms");
 
 		sw.Restart();
 
@@ -111,7 +108,7 @@ public class CertHelper
 			var result = await vimexxApi.LetsEncryptAsync(domain, challenges);
 		}
 
-		log.AppendLine($"\t\t\t\tPutting Dns challenges took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\t\tAuthzDns (updating DNS entries) {sw.ElapsedMilliseconds}ms");
 
 		await Task.Delay(1000);
 
@@ -127,7 +124,7 @@ public class CertHelper
 			}
 		}
 
-		log.AppendLine($"\t\t\t\tStarting Validate took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\t\tAuthzDns Start Validating {sw.ElapsedMilliseconds}ms");
 
 		sw.Restart();
 
@@ -141,7 +138,7 @@ public class CertHelper
 				var a = await authz.Resource();
 				if (AuthorizationStatus.Invalid == a?.Status)
 				{
-					log.AppendLine($"\t\t\t\tAuthorizationStatus.Invalid status in {sw.ElapsedMilliseconds}ms (bailing out)");
+					log.AppendLine($"\t\t\t\tAuthzDns ERROR AuthorizationStatus.Invalid status in {sw.ElapsedMilliseconds}ms (bailing out)");
 
 					return null;
 				}
@@ -153,13 +150,13 @@ public class CertHelper
 
 			if (statuses.All(s => s == AuthorizationStatus.Valid))
 			{
-				log.AppendLine($"\t\t\t\tDNS validation OK took {sw.ElapsedMilliseconds}ms");
+				log.AppendLine($"\t\t\t\tAuthzDns all Valid {sw.ElapsedMilliseconds}ms");
 
 				return orderContext;
 			}
 		}
 
-		log.AppendLine($"\t\t\t\tDNS validation TIMEOUT in {sw.ElapsedMilliseconds}ms (bailing out)");
+		log.AppendLine($"\t\t\t\tAuthzDns ERROR timeout in {sw.ElapsedMilliseconds}ms (bailing out)");
 
 		return null;
 	}
@@ -171,9 +168,9 @@ public class CertHelper
 		var orderContext = await AuthzDns(log, acmeContext, vimexxApi, hosts);
 
 		if(orderContext == null)
-			log.AppendLine($"\t\t\tAuthzDns ERROR");
+			log.AppendLine($"\t\t\tValidateOrder ERROR (no order) {sw.ElapsedMilliseconds}ms");
 		else
-			log.AppendLine($"\t\t\tAuthzDns took {sw.ElapsedMilliseconds}ms");
+			log.AppendLine($"\t\t\tValidateOrder OK {sw.ElapsedMilliseconds}ms");
 
 		return orderContext;
 	}
@@ -188,8 +185,6 @@ public class CertHelper
 			msg.To.Add(new MailAddress(contact));
 			msg.Body = "<pre>" + body + "</pre>";
 			msg.Subject = Settings.Get("SmptSubject");
-			if (msg.Body.IndexOf("error") > 0 || Debugger.IsAttached)
-				msg.Subject += " (errors)";
 			msg.IsBodyHtml = true;
 
 			using var smtpclient = new SmtpClient(Settings.Get("SmtpHost"), Settings.Get<int>("SmtpPort"));
@@ -210,7 +205,7 @@ public class CertHelper
 		{
 		}
 	}
-	async private static Task<AcmeContext> CreateAcmeContextAsync(StringBuilder log, bool UseStaging)
+	async private static Task<AcmeContext> GetAcmeContextAsync(StringBuilder log, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -233,25 +228,23 @@ public class CertHelper
 
 		var AccountKeyFile = contact + ".pem";
 
-		AcmeContext acmeContext;
-
 		if (File.Exists(AccountKeyFile))
 		{
 			var pemKey = await File.ReadAllTextAsync(AccountKeyFile);
 			var accountKey = KeyFactory.FromPem(pemKey);
-			acmeContext = new AcmeContext(directoryUri, accountKey);
+			var acmeContext = new AcmeContext(directoryUri, accountKey);
+			log.AppendLine($"\tGetAcmeContext (existing) {sw.ElapsedMilliseconds}ms");
+			return acmeContext;
 		}
 		else
 		{
-			acmeContext = new AcmeContext(directoryUri);
+			var acmeContext = new AcmeContext(directoryUri);
 			_ = await acmeContext.NewAccount(contact, true);
 			var pemKey = acmeContext.AccountKey.ToPem();
 			await File.WriteAllTextAsync(AccountKeyFile, pemKey);
+			log.AppendLine($"\tGetAcmeContext (new) {sw.ElapsedMilliseconds}ms");
+			return acmeContext;
 		}
-
-		log.AppendLine($"\tCreating AcmeContext took {sw.ElapsedMilliseconds}ms");
-
-		return acmeContext;
 	}
 
 	async private static Task<CertificateChain?> GetCertificateChainAsync(StringBuilder log, IKey privateKey, IOrderContext orderContext, string[] hosts, string domain)
@@ -273,27 +266,26 @@ public class CertHelper
 
 		CertificateChain? certificate = null;
 
-		log.AppendLine($"\t\t\tFinalizing order took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tGetCertificateChain (finalizing order) {sw.ElapsedMilliseconds}ms");
 
 		sw.Restart();
 
-		for (int i = 0; i < 600; i++)
+		for (int i = 0; i < 60; i++)
 		{
-			await Task.Delay(100);
 			try
 			{
+				await Task.Delay(1000);
 				certificate = await orderContext.Download(null);
 				break;
 			}
 			catch
 			{
-
 			}
 		}
 		if(certificate != null)
-			log.AppendLine($"\t\t\tDownloading certificate took {sw.ElapsedMilliseconds}ms");
+			log.AppendLine($"\t\t\tGetCertificateChain (downloaded certificate) {sw.ElapsedMilliseconds}ms");
 		else
-			log.AppendLine($"\t\t\tDownloading certificate error timeout {sw.ElapsedMilliseconds}ms");
+			log.AppendLine($"\t\t\tGetCertificateChain ERROR timeout {sw.ElapsedMilliseconds}ms");
 
 		return certificate;
 	}
@@ -314,7 +306,7 @@ public class CertHelper
 
 		await File.WriteAllBytesAsync($"{domain}.pfx", pfxData);
 
-		log.AppendLine($"\t\t\tCreating {domain}.pfx took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tSaveCertificate {domain}.pfx {sw.ElapsedMilliseconds}ms");
 	}
 
 	async private static Task LetsEncryptDomainAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi vimexxApi, string domain, bool UseStaging)
@@ -341,7 +333,7 @@ public class CertHelper
 			await AddCertToStoreAsync(log, $"{domain}.pfx");
 		}
 
-		log.AppendLine($"\t\tLetsEncryptDomainAsync {domain} took {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\tLetsEncryptDomain {domain} {sw.ElapsedMilliseconds}ms");
 	}
 
 	/// <summary>
@@ -349,7 +341,7 @@ public class CertHelper
 	/// </summary>
 	/// <param name="domain"></param>
 	/// <returns></returns>
-	private static bool CheckCertValid(string domain)
+	private static bool CheckDomainCert(string domain)
 	{
 		using var store = new X509Store(Settings.Get("CertificateStoreName"), StoreLocation.LocalMachine);
 
@@ -374,7 +366,7 @@ public class CertHelper
 	}
 
 
-	private static byte[] GetCertHashDomain(string domain)
+	private static byte[] GetDomainCertHash(string domain)
 	{
 		var certhash = Array.Empty<byte>();
 
@@ -401,7 +393,7 @@ public class CertHelper
 	/// </summary>
 	/// <param name="log"></param>
 	/// <returns></returns>
-	async private static Task RefreshBindingsAsync(StringBuilder log)
+	async private static Task RefreshIISBindingsAsync(StringBuilder log)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -431,7 +423,7 @@ public class CertHelper
 					domain = domain[(ii + 1)..];
 				}
 
-				var CertificateHash = GetCertHashDomain(domain);
+				var CertificateHash = GetDomainCertHash(domain);
 
 				if (CertificateHash.Length == 0)
 					continue;
@@ -439,7 +431,7 @@ public class CertHelper
 				if (binding.CertificateHash != null && binding.CertificateHash.SequenceEqual(CertificateHash))
 					continue;
 
-				log.AppendLine($"\t\tRefresh certificate for binding {binding.Host} with new cert {domain}");
+				log.AppendLine($"\t\tRefreshIISBindings {binding.Host} using new cert {domain}");
 
 				// remove old binding
 				site.Bindings.Remove(binding);
@@ -459,12 +451,12 @@ public class CertHelper
 			}
 			catch(Exception eee)
 			{
-				log.AppendLine($"\t\tiisManager CommitChanges error {eee.Message} On Try: {intI}");
+				log.AppendLine($"\t\tRefreshIISBindings ERROR ServerManager (IIS) CommitChanges {eee.Message} On Try: {intI}");
 				await Task.Delay(1000);
 			}
 		}
 
-		log.AppendLine($"\tRefreshBindingsAsync took {sw.ElapsedMilliseconds}mS");
+		log.AppendLine($"\tRefreshIISBindings OK {sw.ElapsedMilliseconds}mS");
 	}
 
 	async private static Task SaveLogAsync(string log)
@@ -502,7 +494,7 @@ public class CertHelper
 				var domain = domains[i];
 				if (string.IsNullOrWhiteSpace(domain))
 					continue;
-				if (CheckCertValid(domain))
+				if (CheckDomainCert(domain))
 				{
 					log.AppendLine($"\t\tCert for {domain} is valid");
 					domains.Remove(domain);
@@ -513,7 +505,7 @@ public class CertHelper
 
 			if(domains.Count>0)
 			{
-				var acmeContext = await CreateAcmeContextAsync(log, UseStaging);
+				var acmeContext = await GetAcmeContextAsync(log, UseStaging);
 
 				var vimexxApi = await GetVimexxApiAsync(log);
 
@@ -521,10 +513,10 @@ public class CertHelper
 				{
 					await LetsEncryptDomainAsync(log, acmeContext, vimexxApi, domain, UseStaging);
 				}
-				await RefreshBindingsAsync(log);
+				await RefreshIISBindingsAsync(log);
 			}
 
-			log.AppendLine($"LetsEncryptDomains ended (normal) took {sw.Elapsed}");
+			log.AppendLine($"LetsEncryptDomains ended (normal) {sw.Elapsed}");
 		}
 		catch(Exception eee)
 		{
