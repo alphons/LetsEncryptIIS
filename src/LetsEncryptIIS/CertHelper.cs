@@ -1,13 +1,15 @@
-﻿using Certes;
+﻿using System.Text;
+using System.Net.Mail;
+using System.Diagnostics;
+using System.Security.Cryptography.X509Certificates;
+
+using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
 using Certes.Pkcs;
+
 using Microsoft.Web.Administration;
-using System.Diagnostics;
-using System.Net;
-using System.Net.Mail;
-using System.Security.Cryptography.X509Certificates;
-using System.Text;
+
 using Vimexx_API;
 
 namespace LetsEncryptIIS;
@@ -45,7 +47,7 @@ public class CertHelper
 	{
 		var sw = Stopwatch.StartNew();
 
-		var vimexxApi = new VimexxApi();
+		var vimexxApi = new VimexxApi(log);
 		await vimexxApi.LoginAsync(
 			Settings.Get("VimexxClientId"),
 			Settings.Get("VimexxClientKey"),
@@ -62,7 +64,9 @@ public class CertHelper
 		foreach (var authz in authorizations)
 		{
 			var res = await authz.Resource();
-			_ = await vimexxApi.LetsEncryptAsync(res.Identifier.Value, new List<string>());
+			var totalresult = await vimexxApi.LetsEncryptAsync(res.Identifier.Value, new List<string>());
+			if (totalresult == null && res != null && res.Identifier != null)
+				log.AppendLine($"Error: ClearAuthorizations: vimexxApi.LetsEncryptAsync returns null on {res.Identifier.Value}");
 			_ = await authz.Deactivate();
 		}
 		log.AppendLine($"\t\t\tClearAuthorizations {sw.ElapsedMilliseconds}ms");
@@ -106,6 +110,9 @@ public class CertHelper
 			var challenges = dict[domain];
 
 			var result = await vimexxApi.LetsEncryptAsync(domain, challenges);
+
+			if(result == null)
+				log.AppendLine($"Error: vimexxApi.LetsEncryptAsync returns null on {domain}");
 		}
 
 		log.AppendLine($"\t\t\t\tAuthzDns (updating DNS entries) {sw.ElapsedMilliseconds}ms");
@@ -168,17 +175,25 @@ public class CertHelper
 		var orderContext = await AuthzDns(log, acmeContext, vimexxApi, hosts);
 
 		if(orderContext == null)
-			log.AppendLine($"\t\t\tValidateOrder ERROR (no order) {sw.ElapsedMilliseconds}ms");
+			log.AppendLine($"\t\t\tValidateOrder ERROR (no orderContext) {sw.ElapsedMilliseconds}ms");
 		else
 			log.AppendLine($"\t\t\tValidateOrder OK {sw.ElapsedMilliseconds}ms");
 
 		return orderContext;
 	}
 
-	async private static Task MailRapportAsync(string body)
+	async public static Task MailRapportAsync(StringBuilder log)
 	{
 		try
 		{
+			var body = log.ToString();
+
+			if(!body.Contains("Error"))
+			{
+				log.AppendLine($"NOT MAILED (because there is no error)");
+				return;
+			}
+
 			using var msg = new MailMessage();
 			var contact = Settings.Get("Contact");
 			msg.From = new MailAddress(contact);
@@ -187,13 +202,16 @@ public class CertHelper
 			msg.Subject = Settings.Get("SmptSubject");
 			msg.IsBodyHtml = true;
 
+			if (body.Contains("Error"))
+				msg.Subject = "Error: " + msg.Subject;
+
 			using var smtpclient = new SmtpClient(Settings.Get("SmtpHost"), Settings.Get<int>("SmtpPort"));
 			smtpclient.DeliveryMethod = SmtpDeliveryMethod.Network;
 			smtpclient.EnableSsl = Settings.Get<bool>("SmtpEnableSsl");
 			if (!string.IsNullOrWhiteSpace(Settings.Get("SmtpUser")) ||
 				!string.IsNullOrWhiteSpace(Settings.Get("SmtpPassword")))
 			{
-				smtpclient.Credentials = new NetworkCredential()
+				smtpclient.Credentials = new System.Net.NetworkCredential()
 				{
 					UserName = Settings.Get("SmtpUser"),
 					Password = Settings.Get("SmtpPassword"),
@@ -201,8 +219,9 @@ public class CertHelper
 			}
 			await smtpclient.SendMailAsync(msg);
 		}
-		catch
+		catch(Exception eee)
 		{
+			log.AppendLine($"Error: mail : {eee.Message}");
 		}
 	}
 	async private static Task<AcmeContext> GetAcmeContextAsync(StringBuilder log, bool UseStaging)
@@ -315,25 +334,27 @@ public class CertHelper
 
 		var hosts = new[] { domain, $"*.{domain}" };
 
+		log.AppendLine($"\t\tLetsEncryptDomain {domain} started");
+
 		var orderContext = await ValidateOrderAsync(log, acmeContext, vimexxApi, hosts);
 
-		if (orderContext == null)
-			return;
-
-		var privateKey = KeyFactory.NewKey(KeyAlgorithm.ES256);
-
-		var certificate = await GetCertificateChainAsync(log, privateKey, orderContext, hosts, domain);
-
-		await ClearAuthorizations(log, orderContext, vimexxApi);
-
-		if (certificate != null)
+		if (orderContext != null)
 		{
-			await SaveCertificateAsync(log, privateKey, certificate, domain, UseStaging);
+			var privateKey = KeyFactory.NewKey(KeyAlgorithm.ES256);
 
-			await AddCertToStoreAsync(log, $"{domain}.pfx");
+			var certificate = await GetCertificateChainAsync(log, privateKey, orderContext, hosts, domain);
+
+			await ClearAuthorizations(log, orderContext, vimexxApi);
+
+			if (certificate != null)
+			{
+				await SaveCertificateAsync(log, privateKey, certificate, domain, UseStaging);
+
+				await AddCertToStoreAsync(log, $"{domain}.pfx");
+			}
 		}
 
-		log.AppendLine($"\t\tLetsEncryptDomain {domain} {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\tLetsEncryptDomain {domain} ended {sw.ElapsedMilliseconds}ms");
 	}
 
 	/// <summary>
@@ -520,9 +541,10 @@ public class CertHelper
 		}
 		catch(Exception eee)
 		{
-			log.AppendLine($"***** {eee.Message} ***** ");
-			await MailRapportAsync(log.ToString());
+			log.AppendLine($"***** Error {eee.Message} ***** ");
 		}
+
+		await MailRapportAsync(log);
 
 		await SaveLogAsync(log.ToString());
 	}

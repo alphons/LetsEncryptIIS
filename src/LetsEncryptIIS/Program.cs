@@ -1,7 +1,12 @@
 ﻿
 using System.Security.Principal;
-
+using System.Text;
 using LetsEncryptIIS;
+
+//var log = new StringBuilder();
+//log.AppendLine("alphons");
+//await CertHelper.MailRapportAsync(log);
+//return;
 
 // For staging: install acme-staging/letsencrypt-stg-root-x1.der into LocalMachine trusted root certificates
 // ( Lokale computer / Vertrouwde basiscertificieringsinstanties / Certificaten )

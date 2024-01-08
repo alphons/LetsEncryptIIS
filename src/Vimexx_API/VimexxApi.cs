@@ -1,10 +1,7 @@
-﻿
-
-using System.Diagnostics;
-using System.Net.Http.Headers;
-
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
+
+#nullable enable
 
 namespace Vimexx_API;
 
@@ -14,47 +11,69 @@ public class VimexxApi
 	private const string API_URL = "https://api.vimexx.nl";
 	private const string API_VERSION = "8.6.1-release.1";
 
-	private string endpoint;
+	private string endpoint = API_URL + "/api/v1";
 
-	private AuthToken token;
+	private AuthToken? token;
 
-	private bool DEBUG = false;
+	private readonly StringBuilder log;
 
-	async private Task<T> RequestAsync<T>(HttpMethod method, string apiMethod, object data)
+	public VimexxApi(StringBuilder log)
 	{
-		var httpClient = new HttpClient();
+		this.log = log;
+	}
 
-		httpClient.DefaultRequestHeaders.Add("User-Agent", USER_AGENT);
+	async private Task<T?> RequestAsync<T>(HttpMethod method, string apiMethod, object data)
+	{
+		var jsonResult = string.Empty;
+		var jsonRequest = string.Empty;
 
-		httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", this.token.access_token);
-
-		var json = JsonSerializer.Serialize(new { body = data, version = API_VERSION });
-
-		var request = new HttpRequestMessage(method, this.endpoint + apiMethod)
+		if (this.token == null)
 		{
-			Content = new StringContent(json, Encoding.UTF8, "application/json")
-		};
+			log.AppendLine("Error: token is null");
+			return default;
+		}
 
-		var httpResponseMessage = await httpClient.SendAsync(request);
-
-		httpResponseMessage.EnsureSuccessStatusCode();
-
-		if (httpResponseMessage.IsSuccessStatusCode)
+		try
 		{
-			var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
+			var httpClient = new HttpClient();
 
-			if (DEBUG)
+			httpClient.DefaultRequestHeaders.Add("User-Agent", USER_AGENT);
+
+			httpClient.DefaultRequestHeaders.Authorization = 
+				new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", this.token.access_token);
+
+			jsonRequest = JsonSerializer.Serialize(new { body = data, version = API_VERSION });
+
+			var request = new HttpRequestMessage(method, this.endpoint + apiMethod)
 			{
+				Content = new StringContent(jsonRequest, Encoding.UTF8, "application/json")
+			};
+
+			var httpResponseMessage = await httpClient.SendAsync(request);
+
+			httpResponseMessage.EnsureSuccessStatusCode();
+
+			if (httpResponseMessage.IsSuccessStatusCode)
+			{
+				var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
+
 				var sr = new StreamReader(stream);
 
-				var jsonResult = await sr.ReadToEndAsync();
+				jsonResult = await sr.ReadToEndAsync();
 
-				Debug.WriteLine(jsonResult);
-
-				return JsonSerializer.Deserialize<T>(jsonResult);
+				try
+				{
+					return JsonSerializer.Deserialize<T>(jsonResult);
+				}
+				catch
+				{
+					log.AppendLine($"Error: Deserialize: {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
+				}
 			}
-
-			return await JsonSerializer.DeserializeAsync<T>(stream);
+		}
+		catch(Exception eee)
+		{
+			log.AppendLine($"Error: Exception: {eee.Message}: {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
 		}
 
 		return default;
@@ -91,19 +110,16 @@ public class VimexxApi
 
 		if (testmodus)
 			this.endpoint = API_URL + "/apitest/v1";
-		else
-			this.endpoint = API_URL + "/api/v1";
-
 	}
 
-	async public Task<GetDNSResponse> GetDNSAsync(string domainname)
+	async public Task<GetDNSResponse?> GetDNSAsync(string domainname)
 	{
 		var args = domainname.Split('.');
 
 		return await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[0], tld = args[1] });
 	}
 
-	async public Task<SaveDNSResponse> SaveDNSAsync(string domainname, List<DnsRecord> dns_records)
+	async public Task<SaveDNSResponse?> SaveDNSAsync(string domainname, List<DnsRecord> dns_records)
 	{
 		var args = domainname.Split('.');
 
@@ -113,9 +129,15 @@ public class VimexxApi
 		return await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[0], tld = args[1], dns_records });
 	}
 
-	async public Task<Response<object>> LetsEncryptAsync(string domainname, List<string> challenges)
+	async public Task<Response<object>?> LetsEncryptAsync(string domainname, List<string> challenges)
 	{
 		var getdnsresponse = await GetDNSAsync(domainname);
+
+		if (getdnsresponse == null)
+		{
+			log.AppendLine($"Error: GetDNSAsync returned null on {domainname}");
+			return null;
+		}
 
 		if (getdnsresponse.result == false)
 			return new Response<object>() { result = getdnsresponse.result, message = getdnsresponse.message };
@@ -128,9 +150,15 @@ public class VimexxApi
 		return await SaveDNSAsync(domainname, records);
 	}
 
-	async public Task<Response<object>> LetsEncryptAsync(string domainname, string challenge)
+	async public Task<Response<object>?> LetsEncryptAsync(string domainname, string challenge)
 	{
 		var getdnsresponse = await GetDNSAsync(domainname);
+
+		if (getdnsresponse == null)
+		{
+			log.AppendLine($"Error: LetsEncryptAsync GetDNSAsync returns null");
+			return null;
+		}
 
 		if (getdnsresponse.result == false)
 			return new Response<object>() { result = getdnsresponse.result, message = getdnsresponse.message };
