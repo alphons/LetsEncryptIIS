@@ -20,6 +20,7 @@
     "CSR": "C=NL, ST=Flevoland, L=Lelystad, O=Some Organisation, OU=ICT",
     "Domains": [
         "example.com",
-        "notherexample.org"
+        "notherexample.org",
+        "www.exname.com|d:\\wwwroot\\sitedir"
     ]
 }
