@@ -599,24 +599,28 @@ public class CertHelper
 			var domains = Settings.Get<List<string>>("Domains") ?? 
 				throw new Exception("Domains is null in settings.json");
 
-			log.AppendLine($"\tChecking: {domains.Count} domains");
+			log.AppendLine($"\tChecking: {domains.Count} domains started");
 
 			for (int i = domains.Count - 1; i >= 0; i--)
 			{
-				var domain = domains[i];
-				domain = domain.Split('|')[0];
-				if (string.IsNullOrWhiteSpace(domain))
+				var line = domains[i];
+				if (string.IsNullOrWhiteSpace(line))
 					continue;
+				var domain = line.Split('|')[0];
 				if (CheckDomainCert(domain))
 				{
+					domains.Remove(line);
 					log.AppendLine($"\t\tCert for {domain} is valid");
-					domains.Remove(domain);
-					continue;
 				}
-				log.AppendLine($"\t\tRenewing cert for {domain}");
+				else
+				{
+					log.AppendLine($"\t\tCert for {domain} must be renewed");
+				}
 			}
 
-			if(domains.Count>0)
+			log.AppendLine($"\tChecking: {domains.Count} domains remain");
+
+			if (domains.Count>0)
 			{
 				var acmeContext = await GetAcmeContextAsync(log, UseStaging);
 
