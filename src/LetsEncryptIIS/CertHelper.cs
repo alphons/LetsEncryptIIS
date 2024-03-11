@@ -629,13 +629,15 @@ public class CertHelper
 				foreach (var domain in domains)
 				{
 					var args = domain.Split('|');
-					if (domain.Split('.').Length == 1)
+					if (args.Length == 1)
 					{
 						vimexxApi ??= await GetVimexxApiAsync(log);
 						await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
 					}
 					else
+					{
 						await ValidateDomainAsync(log, acmeContext, null, args[1], args[0], UseStaging);
+					}
 				}
 				await RefreshIISBindingsAsync(log);
 			}
