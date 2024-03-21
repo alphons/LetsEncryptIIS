@@ -77,6 +77,7 @@ public class CertHelper
 	private async static Task CreateDnsChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi vimexxApi, IEnumerable<IAuthorizationContext> authorizations)
 	{
 		var sw = Stopwatch.StartNew();
+
 		var dict = new Dictionary<string, List<string>>();
 
 		foreach (var authz in authorizations)
@@ -90,7 +91,7 @@ public class CertHelper
 			var domain = res.Identifier.Value;
 
 			if (!dict.ContainsKey(domain))
-				dict.Add(domain, new List<string>());
+				dict.Add(domain, []);
 
 			dict[domain].Add(dnsTxt);
 		}
@@ -129,11 +130,11 @@ public class CertHelper
 		log.AppendLine($"\t\t\t\tCreateDnsChallenge Start Validating {sw.ElapsedMilliseconds}ms");
 	}
 
-	private async static Task CreateHttpChallenge(StringBuilder log, string? RootPath, IEnumerable<IAuthorizationContext> authorizations)
+	private async static Task CreateHttpChallenge(StringBuilder log, string? LocalhostDir, IEnumerable<IAuthorizationContext> authorizations)
 	{
-		if (RootPath == null)
+		if (LocalhostDir == null)
 		{
-			log.AppendLine($"\t\t\t\tCreateHttpChallenge Error: RootPath == null");
+			log.AppendLine($"\t\t\t\tCreateHttpChallenge Error: Settings LocalhostDir == null");
 			return;
 		}
 
@@ -143,7 +144,7 @@ public class CertHelper
 		{
 			var dnsChallenge = await authz.Http();
 
-			var dir = Path.Combine(RootPath, ".well-known", "acme-challenge");
+			var dir = Path.Combine(LocalhostDir, ".well-known", "acme-challenge");
 
 			var challengePath = Path.Combine(dir, dnsChallenge.Token);
 			var webconfigPath = Path.Combine(dir, "web.config");
@@ -171,23 +172,23 @@ public class CertHelper
 
 	}
 
-	private static void ClearHttpChallenge(StringBuilder log, IOrderContext orderContext, string? RootPath)
+	private static void ClearHttpChallenge(StringBuilder log, IOrderContext orderContext, string? LocalhostDir)
 	{
-		if (RootPath == null)
+		if (LocalhostDir == null)
 		{
-			log.AppendLine($"\t\t\tClearHttpChallenge RootPath is null");
+			log.AppendLine($"\t\t\tClearHttpChallenge LocalhostDir is null");
 			return;
 		}
 		var sw = Stopwatch.StartNew();
 
-		var dir = Path.Combine(RootPath, ".well-known");
+		var dir = Path.Combine(LocalhostDir, ".well-known");
 
 		System.IO.Directory.Delete(dir, true);
 
 		log.AppendLine($"\t\t\tClearHttpChallenge {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? RootPath, string[] hosts)
+	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -202,7 +203,7 @@ public class CertHelper
 		if (vimexxApi != null)
 			await CreateDnsChallenge(log, acmeContext, vimexxApi, authorizations);
 		else
-			await CreateHttpChallenge(log, RootPath, authorizations);
+			await CreateHttpChallenge(log, LocalhostDir, authorizations);
 
 		log.AppendLine($"\t\t\t\tCreateChallenge Start Validating {sw.ElapsedMilliseconds}ms");
 
@@ -235,7 +236,7 @@ public class CertHelper
 				if (vimexxApi != null)
 					await ClearDnsChallenge(log, orderContext, vimexxApi);
 				else
-					ClearHttpChallenge(log, orderContext, RootPath);
+					ClearHttpChallenge(log, orderContext, LocalhostDir);
 
 				return orderContext;
 			}
@@ -246,17 +247,17 @@ public class CertHelper
 		if (vimexxApi != null)
 			await ClearDnsChallenge(log, orderContext, vimexxApi);
 		else
-			ClearHttpChallenge(log, orderContext, RootPath);
+			ClearHttpChallenge(log, orderContext, LocalhostDir);
 
 		return null;
 	}
 
 
-	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? RootPath, string[] hosts)
+	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
 	{
 		var sw = Stopwatch.StartNew();
 
-		var orderContext = await CreateChallenge(log, acmeContext, vimexxApi, RootPath, hosts);
+		var orderContext = await CreateChallenge(log, acmeContext, vimexxApi, LocalhostDir, hosts);
 
 		if (orderContext == null)
 			log.AppendLine($"\t\t\tValidateOrder ERROR (no orderContext) {sw.ElapsedMilliseconds}ms");
@@ -410,21 +411,21 @@ public class CertHelper
 		log.AppendLine($"\t\t\tSaveCertificate {domain}.pfx {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task ValidateDomainAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? RootPath, string domain, bool UseStaging)
+	async private static Task ValidateDomainAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string domain, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
 
-		string[] hosts = new string[0];
+		string[] hosts = [];
 
 		if (vimexxApi != null)
-			hosts = new[] { domain, $"*.{domain}" };
+			hosts = [domain, $"*.{domain}"];
 
-		if (RootPath != null)
-			hosts = new[] { domain };
+		if (LocalhostDir != null)
+			hosts = [domain];
 
 		log.AppendLine($"\t\tLetsEncryptDomain {domain} started");
 
-		var orderContext = await ValidateOrderAsync(log, acmeContext, vimexxApi, RootPath, hosts);
+		var orderContext = await ValidateOrderAsync(log, acmeContext, vimexxApi, LocalhostDir, hosts);
 
 		if (orderContext != null)
 		{
@@ -590,30 +591,33 @@ public class CertHelper
 		}
 	}
 
-	async public static Task LetsEncryptDomainsAsync(bool UseStaging = false)
+	private enum TypeChallenge
 	{
-		var sw = Stopwatch.StartNew();
+		None,
+		Http,
+		Dns
+	}
 
-		var log = new StringBuilder();
-
+	async private static Task ChallengeDomainsAsync(StringBuilder log, List<string> domains, TypeChallenge challenge, bool UseStaging = false)
+	{
 		try
 		{
-			log.AppendLine($"LetsEncryptDomains started {DateTime.Now}");
+			var sw = Stopwatch.StartNew();
 
-			var domains = Settings.Get<List<string>>("Domains") ??
-				throw new Exception("Domains is null in settings.json");
+			log.AppendLine($"ChallengeDomainsAsync {challenge} started {DateTime.Now}");
+
+			var LocalhostDir = Settings.Get<string>("LocalhostDir");
 
 			log.AppendLine($"\tChecking: {domains.Count} domains started");
 
 			for (int i = domains.Count - 1; i >= 0; i--)
 			{
-				var line = domains[i];
-				if (string.IsNullOrWhiteSpace(line))
+				var domain = domains[i];
+				if (string.IsNullOrWhiteSpace(domain))
 					continue;
-				var domain = line.Split('|')[0];
 				if (CheckDomainCert(domain))
 				{
-					domains.Remove(line);
+					domains.Remove(domain);
 					log.AppendLine($"\t\tCert for {domain} is valid");
 				}
 				else
@@ -632,29 +636,48 @@ public class CertHelper
 
 				foreach (var domain in domains)
 				{
-					var args = domain.Split('|');
-					if (args.Length == 1)
+					switch(challenge)
 					{
-						vimexxApi ??= await GetVimexxApiAsync(log);
-						await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
-					}
-					else
-					{
-						await ValidateDomainAsync(log, acmeContext, null, args[1], args[0], UseStaging);
+						case TypeChallenge.Http:
+							await ValidateDomainAsync(log, acmeContext, null, LocalhostDir, domain, UseStaging);
+							break;
+						case TypeChallenge.Dns:
+							vimexxApi ??= await GetVimexxApiAsync(log);
+							await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
+							break;
+						default:
+							break;
 					}
 				}
 				await RefreshIISBindingsAsync(log);
 			}
 
-			log.AppendLine($"LetsEncryptDomains ended (normal) {sw.Elapsed}");
+			log.AppendLine($"ChallengeDomainsAsync ended (normal) {sw.Elapsed}");
 		}
 		catch (Exception eee)
 		{
 			log.AppendLine($"***** Error {eee.Message} ***** ");
 		}
+	}
+
+	async public static Task LetsEncryptDomainsAsync(bool UseStaging)
+	{
+		var log = new StringBuilder();
+
+		var domainsDns = Settings.Get<List<string>>("DnsChallenges");
+
+		if (domainsDns != null && domainsDns.Count > 0)
+			await ChallengeDomainsAsync(log, domainsDns, TypeChallenge.Dns, UseStaging);
+
+		var domainsHttp = Settings.Get<List<string>>("HttpChallenges");
+
+		if (domainsHttp != null && domainsHttp.Count > 0)
+			await ChallengeDomainsAsync(log, domainsHttp, TypeChallenge.Http, UseStaging);
 
 		await MailRapportAsync(log);
 
 		await SaveLogAsync(log.ToString());
 	}
+
+
 }

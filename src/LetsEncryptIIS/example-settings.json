@@ -1,26 +1,29 @@
 {
-    "CertificateStoreName": "WebHosting",
-    "AcmeStaging": "acme-staging",
-    "AcmeProduction": "acme-production",
-    "PFXPassword": "Pas5w0rd!321",
-    "Contact": "info@example.com",
-    "LogDirectory": "Log",
-    "SmtpHost": "smtp.example.com",
-    "SmtpPort": 25,
-    "SmtpUser": "some-user-id",
-    "SmtpPassword": "some-email-password",
-    "SmtpEnableSsl": false,
-    "SmptSubject": "Rapport SSL cert update core",
-    "CertDaysBeforeExpire": 30,
-    "LocalConfig": "c:\\windows\\system32\\inetsrv\\config\\applicationHost.config",
-    "VimexxClientId": "1234",
-    "VimexxClientKey": "57575473y63yrhrh4jdjd78412345677abcd",
-    "VimexxUsername": "vimexxuser321@example.com",
-    "VimexxPassword": "Pas5w0rd!321V1mM3xxUser",
-    "CSR": "C=NL, ST=Flevoland, L=Lelystad, O=Some Organisation, OU=ICT",
-    "Domains": [
-        "example.com",
-        "notherexample.org",
-        "www.exname.com|d:\\wwwroot\\sitedir"
-    ]
+	"CertificateStoreName": "WebHosting",
+	"AcmeStaging": "acme-staging",
+	"AcmeProduction": "acme-production",
+	"PFXPassword": "Pas5w0rd!321",
+	"Contact": "info@example.com",
+	"LogDirectory": "Log",
+	"SmtpHost": "smtp.example.com",
+	"SmtpPort": 25,
+	"SmtpUser": "some-user-id",
+	"SmtpPassword": "some-email-password",
+	"SmtpEnableSsl": false,
+	"SmptSubject": "Rapport SSL cert update core",
+	"CertDaysBeforeExpire": 30,
+	"LocalConfig": "c:\\windows\\system32\\inetsrv\\config\\applicationHost.config",
+	"LocalhostDir": "D:\\inetpub\\wwwroot",
+	"VimexxClientId": "1234",
+	"VimexxClientKey": "57575473y63yrhrh4jdjd78412345677abcd",
+	"VimexxUsername": "vimexxuser321@example.com",
+	"VimexxPassword": "Pas5w0rd!321V1mM3xxUser",
+	"CSR": "C=NL, ST=Flevoland, L=Lelystad, O=Some Organisation, OU=ICT",
+	"DnsChallenges": [
+		"example.com",
+		"notherexample.org"
+	],
+	"HttpChallenges": [
+		"www.exname.com"
+	]
 }

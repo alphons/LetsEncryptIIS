@@ -12,6 +12,8 @@ using LetsEncryptIIS;
 // ( Lokale computer / Vertrouwde basiscertificieringsinstanties / Certificaten )
 // The .pem file is used at runtime, does not need to be installed
 
+// Make sure, there a website is listening on http://localhost having dir on LocalhostDir (settings)
+
 var staging = (args.Length > 0 && args[0] == "staging");
 
 #pragma warning disable CA1416
