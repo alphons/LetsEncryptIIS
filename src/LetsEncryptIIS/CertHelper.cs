@@ -144,7 +144,7 @@ public class CertHelper
 		{
 			var dnsChallenge = await authz.Http();
 
-			var dir = Path.Combine(LocalhostDir, ".well-known", "acme-challenge");
+			var dir = Path.Combine(LocalhostDir, "letsencrypt");
 
 			var challengePath = Path.Combine(dir, dnsChallenge.Token);
 			var webconfigPath = Path.Combine(dir, "web.config");
@@ -181,7 +181,7 @@ public class CertHelper
 		}
 		var sw = Stopwatch.StartNew();
 
-		var dir = Path.Combine(LocalhostDir, ".well-known");
+		var dir = Path.Combine(LocalhostDir, "letsencrypt");
 
 		System.IO.Directory.Delete(dir, true);
 
@@ -490,6 +490,9 @@ public class CertHelper
 		// For staging: install acme-staging/letsencrypt-stg-root-x1.der into LocalMachine trusted root certificates
 
 		var col = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", false);
+
+		if (col.Count>1) // oops. maybe there are valid and invalid certs also, in this case, take only the valid one
+			col = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", true);
 
 		if (col.Count == 1)
 			certhash = (byte[])col[0].GetCertHash().Clone();
