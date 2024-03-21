@@ -39,7 +39,7 @@ public class CertHelper
 			store.Add(certificate);
 			store.Close();
 		}
-		catch(Exception e)
+		catch (Exception e)
 		{
 			log.AppendLine($"\t\t\tAddCertToStor ERROR {e.Message}");
 		}
@@ -258,7 +258,7 @@ public class CertHelper
 
 		var orderContext = await CreateChallenge(log, acmeContext, vimexxApi, RootPath, hosts);
 
-		if(orderContext == null)
+		if (orderContext == null)
 			log.AppendLine($"\t\t\tValidateOrder ERROR (no orderContext) {sw.ElapsedMilliseconds}ms");
 		else
 			log.AppendLine($"\t\t\tValidateOrder OK {sw.ElapsedMilliseconds}ms");
@@ -272,7 +272,7 @@ public class CertHelper
 		{
 			var body = log.ToString();
 
-			if(!body.Contains("Error"))
+			if (!body.Contains("Error"))
 			{
 				log.AppendLine($"NOT MAILED (because there is no error)");
 				return;
@@ -303,7 +303,7 @@ public class CertHelper
 			}
 			await smtpclient.SendMailAsync(msg);
 		}
-		catch(Exception eee)
+		catch (Exception eee)
 		{
 			log.AppendLine($"Error: mail : {eee.Message}");
 		}
@@ -383,7 +383,7 @@ public class CertHelper
 			{
 			}
 		}
-		if(certificate != null)
+		if (certificate != null)
 			log.AppendLine($"\t\t\tGetCertificateChain (downloaded certificate) {sw.ElapsedMilliseconds}ms");
 		else
 			log.AppendLine($"\t\t\tGetCertificateChain ERROR timeout {sw.ElapsedMilliseconds}ms");
@@ -415,11 +415,11 @@ public class CertHelper
 		var sw = Stopwatch.StartNew();
 
 		string[] hosts = new string[0];
-		
-		if(vimexxApi != null)
+
+		if (vimexxApi != null)
 			hosts = new[] { domain, $"*.{domain}" };
 
-		if(RootPath != null)
+		if (RootPath != null)
 			hosts = new[] { domain };
 
 		log.AppendLine($"\t\tLetsEncryptDomain {domain} started");
@@ -513,7 +513,7 @@ public class CertHelper
 
 		foreach (var site in iisManager.Sites)
 		{
-			for(int i= site.Bindings.Count-1; i>=0;i--)
+			for (int i = site.Bindings.Count - 1; i >= 0; i--)
 			{
 				var binding = site.Bindings[i];
 
@@ -529,16 +529,20 @@ public class CertHelper
 				if (ii < 0)
 					continue;
 
-				while (domain.Split('.').Length > 2)
-				{
-					ii = domain.IndexOf('.');
-					domain = domain[(ii + 1)..];
-				}
-
 				var CertificateHash = GetDomainCertHash(domain);
 
 				if (CertificateHash.Length == 0)
-					continue;
+				{
+					while (domain.Split('.').Length > 2)
+					{
+						ii = domain.IndexOf('.');
+						domain = domain[(ii + 1)..];  // strip www. or other names
+					}
+					CertificateHash = GetDomainCertHash(domain);
+
+					if (CertificateHash.Length == 0)
+						continue;
+				}
 
 				if (binding.CertificateHash != null && binding.CertificateHash.SequenceEqual(CertificateHash))
 					continue;
@@ -561,7 +565,7 @@ public class CertHelper
 				iisManager.CommitChanges();
 				break;
 			}
-			catch(Exception eee)
+			catch (Exception eee)
 			{
 				log.AppendLine($"\t\tRefreshIISBindings ERROR ServerManager (IIS) CommitChanges {eee.Message} On Try: {intI}");
 				await Task.Delay(1000);
@@ -596,7 +600,7 @@ public class CertHelper
 		{
 			log.AppendLine($"LetsEncryptDomains started {DateTime.Now}");
 
-			var domains = Settings.Get<List<string>>("Domains") ?? 
+			var domains = Settings.Get<List<string>>("Domains") ??
 				throw new Exception("Domains is null in settings.json");
 
 			log.AppendLine($"\tChecking: {domains.Count} domains started");
@@ -620,7 +624,7 @@ public class CertHelper
 
 			log.AppendLine($"\tChecking: {domains.Count} domains remain");
 
-			if (domains.Count>0)
+			if (domains.Count > 0)
 			{
 				var acmeContext = await GetAcmeContextAsync(log, UseStaging);
 
@@ -644,7 +648,7 @@ public class CertHelper
 
 			log.AppendLine($"LetsEncryptDomains ended (normal) {sw.Elapsed}");
 		}
-		catch(Exception eee)
+		catch (Exception eee)
 		{
 			log.AppendLine($"***** Error {eee.Message} ***** ");
 		}
