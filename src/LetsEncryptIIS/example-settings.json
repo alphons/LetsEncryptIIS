@@ -24,6 +24,7 @@
 		"notherexample.org"
 	],
 	"HttpChallenges": [
-		"www.exname.com"
+		"www.exname1.com",
+		"www.othername.com"
 	]
 }
