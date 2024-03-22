@@ -45,7 +45,10 @@ The certifcates are ALL wildcard certificates and will have CN=domain.tld and SA
 Also **HttpChallenges** can be used to make http challenges possible. This solution works only when having an IIS Application Request Routing (ARR) in place. All http challenges are handled on the ARR server itself. Therefore you have to install an additional rule to the ARR ruleset.
 The routes all the Letsencrypt http challenge requests to a localhost on the ARR server. Make sure there is some safety-net website localhost running. The **LocalhostDir** of the localhost website must be set in the settings file.
 
+![letenscrypt arr rule](https://github.com/alphons/LetsEncryptIIS/blob/master/Example.png?raw=true)
 
+
+## Example settings.json file
 
 ```json
 {
