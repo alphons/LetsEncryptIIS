@@ -209,17 +209,31 @@ public class CertHelper
 
 		sw.Restart();
 
-		for (int i = 1; i <= 60; i++)
+		for (int i = 1; i <= 10; i++)
 		{
 			await Task.Delay(1000);
 
-			var statuses = new List<AuthorizationStatus>();
+			List<AuthorizationStatus> statuses = [];
+
 			foreach (var authz in authorizations)
 			{
 				var res = await authz.Resource();
+
 				if (AuthorizationStatus.Invalid == res?.Status)
 				{
 					log.AppendLine($"\t\t\t\tCreateChallenge ERROR AuthorizationStatus.Invalid status in {sw.ElapsedMilliseconds}ms (bailing out)");
+
+					if (res?.Challenges.Count > 0)
+					{
+						foreach (var challenge in res.Challenges)
+							log.AppendLine($"\t\t\t\t\tCHallengeError: {challenge?.Error.Detail}");
+					}
+
+					// cleanup
+					if (vimexxApi != null)
+						await ClearDnsChallenge(log, orderContext, vimexxApi);
+					else
+						ClearHttpChallenge(log, orderContext, LocalhostDir);
 
 					return null;
 				}
@@ -273,7 +287,7 @@ public class CertHelper
 		{
 			var body = log.ToString();
 
-			if (!body.Contains("Error"))
+			if (!body.Contains("error", StringComparison.CurrentCultureIgnoreCase))
 			{
 				log.AppendLine($"NOT MAILED (because there is no error)");
 				return;
@@ -667,6 +681,9 @@ public class CertHelper
 	{
 		var log = new StringBuilder();
 
+		if(UseStaging)
+			log.AppendLine("***STAGING***");
+
 		var domainsDns = Settings.Get<List<string>>("DnsChallenges");
 
 		if (domainsDns != null && domainsDns.Count > 0)
@@ -676,6 +693,9 @@ public class CertHelper
 
 		if (domainsHttp != null && domainsHttp.Count > 0)
 			await ChallengeDomainsAsync(log, domainsHttp, TypeChallenge.Http, UseStaging);
+
+		if (UseStaging)
+			log.AppendLine("***STAGING***");
 
 		await MailRapportAsync(log);
 

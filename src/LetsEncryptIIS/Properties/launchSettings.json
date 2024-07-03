@@ -1,8 +1,7 @@
 {
   "profiles": {
     "LetsEncryptIIS": {
-      "commandName": "Project",
-      "commandLineArgs": "staging"
+      "commandName": "Project"
     }
   }
 }
