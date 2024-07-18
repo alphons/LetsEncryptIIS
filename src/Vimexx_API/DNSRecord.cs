@@ -1,11 +1,22 @@
 ﻿
+using System.Text.Json.Serialization;
+
 namespace Vimexx_API;
 public class DnsRecord
 {
-	public string name { get; set; }
-	public string type { get; set; }
-	public string content { get; set; }
-	public object prio { get; set; }
-	public object ttl { get; set; }
+	[JsonPropertyName("name")]
+	public string Name { get; set; }
+
+	[JsonPropertyName("type")]
+	public string Type { get; set; }
+
+	[JsonPropertyName("content")]
+	public string Content { get; set; }
+
+	[JsonPropertyName("prio")]
+	public string? Prio { get; set; }
+
+	[JsonPropertyName("ttl")]
+	public int? TTL { get; set; }
 }
 

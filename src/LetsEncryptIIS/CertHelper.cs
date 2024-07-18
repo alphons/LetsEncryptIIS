@@ -11,8 +11,7 @@ using Certes.Pkcs;
 using Microsoft.Web.Administration;
 
 using Vimexx_API;
-using System.Globalization;
-using Org.BouncyCastle.Asn1.X509;
+
 
 
 namespace LetsEncryptIIS;
@@ -60,18 +59,19 @@ public class CertHelper
 		return vimexxApi;
 	}
 
-	async private static Task ClearDnsChallenge(StringBuilder log, IOrderContext orderContext, VimexxApi vimexxApi)
+	async private static Task ClearDnsChallenges(StringBuilder log, IOrderContext orderContext, VimexxApi vimexxApi)
 	{
+		log.AppendLine($"\t\t\tClearDnsChallenges started");
 		var sw = Stopwatch.StartNew();
 		var authorizations = await orderContext.Authorizations();
 		foreach (var authz in authorizations)
 		{
 			var res = await authz.Resource();
-			var totalresult = await vimexxApi.LetsEncryptAsync(res.Identifier.Value, new List<string>());
+			var totalresult = await vimexxApi.LetsEncryptAsync(res.Identifier.Value, []);
 			if (totalresult == null && res != null && res.Identifier != null)
 				log.AppendLine($"Error: ClearAuthorizations: vimexxApi.LetsEncryptAsync returns null on {res.Identifier.Value}");
 		}
-		log.AppendLine($"\t\t\tClearDnsChallenge {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tClearDnsChallenges {sw.ElapsedMilliseconds}ms");
 	}
 
 	private async static Task CreateDnsChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi vimexxApi, IEnumerable<IAuthorizationContext> authorizations)
@@ -231,7 +231,7 @@ public class CertHelper
 
 					// cleanup
 					if (vimexxApi != null)
-						await ClearDnsChallenge(log, orderContext, vimexxApi);
+						await ClearDnsChallenges(log, orderContext, vimexxApi);
 					else
 						ClearHttpChallenge(log, orderContext, LocalhostDir);
 
@@ -248,7 +248,7 @@ public class CertHelper
 				log.AppendLine($"\t\t\t\tCreateChallenge all Valid {sw.ElapsedMilliseconds}ms");
 
 				if (vimexxApi != null)
-					await ClearDnsChallenge(log, orderContext, vimexxApi);
+					await ClearDnsChallenges(log, orderContext, vimexxApi);
 				else
 					ClearHttpChallenge(log, orderContext, LocalhostDir);
 
@@ -259,7 +259,7 @@ public class CertHelper
 		log.AppendLine($"\t\t\t\tCreateChallenge ERROR timeout in {sw.ElapsedMilliseconds}ms (bailing out)");
 
 		if (vimexxApi != null)
-			await ClearDnsChallenge(log, orderContext, vimexxApi);
+			await ClearDnsChallenges(log, orderContext, vimexxApi);
 		else
 			ClearHttpChallenge(log, orderContext, LocalhostDir);
 

@@ -1,11 +1,13 @@
 ﻿using System.Text;
 using System.Text.Json;
 
+// https://developers.whmcs.com/api/
+
 #nullable enable
 
 namespace Vimexx_API;
 
-public class VimexxApi
+public class VimexxApi(StringBuilder log)
 {
 	private const string USER_AGENT = "Vimexx-WHMCS api agent .NET core 1.0";
 	private const string API_URL = "https://api.vimexx.nl";
@@ -15,13 +17,9 @@ public class VimexxApi
 
 	private AuthToken? token;
 
-	private readonly StringBuilder log;
+	private readonly StringBuilder log = log;
 
-	public VimexxApi(StringBuilder log)
-	{
-		this.log = log;
-	}
-
+	// we do serialization because vimexx tent to error a lot!! so we can debug
 	async private Task<T?> RequestAsync<T>(HttpMethod method, string apiMethod, object data)
 	{
 		var jsonResult = string.Empty;
@@ -35,7 +33,7 @@ public class VimexxApi
 
 		try
 		{
-			var httpClient = new HttpClient();
+			using var httpClient = new HttpClient();
 
 			httpClient.DefaultRequestHeaders.Add("User-Agent", USER_AGENT);
 
@@ -44,20 +42,20 @@ public class VimexxApi
 
 			jsonRequest = JsonSerializer.Serialize(new { body = data, version = API_VERSION });
 
-			var request = new HttpRequestMessage(method, this.endpoint + apiMethod)
+			using var request = new HttpRequestMessage(method, this.endpoint + apiMethod)
 			{
 				Content = new StringContent(jsonRequest, Encoding.UTF8, "application/json")
 			};
 
-			var httpResponseMessage = await httpClient.SendAsync(request);
+			using var httpResponseMessage = await httpClient.SendAsync(request);
 
 			httpResponseMessage.EnsureSuccessStatusCode();
 
 			if (httpResponseMessage.IsSuccessStatusCode)
 			{
-				var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
+				using var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
 
-				var sr = new StreamReader(stream);
+				using var sr = new StreamReader(stream);
 
 				jsonResult = await sr.ReadToEndAsync();
 
@@ -67,13 +65,13 @@ public class VimexxApi
 				}
 				catch
 				{
-					log.AppendLine($"Error: Deserialize: {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
+					log.AppendLine($"Error: Deserialize: {method} {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
 				}
 			}
 		}
 		catch(Exception eee)
 		{
-			log.AppendLine($"Error: Exception: {eee.Message}: {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
+			log.AppendLine($"Error: Exception: {eee.Message}: {method} {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
 		}
 
 		return default;
@@ -81,6 +79,9 @@ public class VimexxApi
 
 	async public Task LoginAsync(string clientId, string clientKey, string username, string password, bool testmodus = false)
 	{
+		if (testmodus)
+			this.endpoint = API_URL + "/apitest/v1";
+
 		List<KeyValuePair<string, string>> data = new Dictionary<string, string>
 			{
 				{ "grant_type",     "password" },
@@ -106,27 +107,48 @@ public class VimexxApi
 			var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
 
 			this.token = await JsonSerializer.DeserializeAsync<AuthToken>(stream);
-		}
 
-		if (testmodus)
-			this.endpoint = API_URL + "/apitest/v1";
+			if(this.token != null)
+				log.AppendLine($"VimexxApi::AuthToken type:{this.token.token_type} exp:{this.token.expires_in}");
+		}
 	}
 
 	async public Task<GetDNSResponse?> GetDNSAsync(string domainname)
 	{
 		var args = domainname.Split('.');
 
-		return await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[0], tld = args[1] });
+		GetDNSResponse? response = null;
+
+		for (int i = 0; i < 5; i++)
+		{
+			response = await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[0], tld = args[1] });
+			if (response != null)
+				break;
+			log.AppendLine($"\t\t\t\tError: GetDNSAsync try {i}");
+			await Task.Delay(5000);
+		}
+
+		return response;
 	}
 
 	async public Task<SaveDNSResponse?> SaveDNSAsync(string domainname, List<DnsRecord> dns_records)
 	{
 		var args = domainname.Split('.');
 
-		dns_records.Where(x => x.ttl == null).ToList().ForEach(x => x.ttl = 3600);
-		dns_records.Where(x => x.type == "CAA").ToList().ForEach(x => x.ttl = 300);
+		dns_records.ForEach(x => x.TTL = 3600);
 
-		return await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[0], tld = args[1], dns_records });
+		SaveDNSResponse? response = null;
+
+		for (int i = 0; i < 5; i++)
+		{
+			response = await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[0], tld = args[1], dns_records });
+			if (response != null)
+				break;
+			log.AppendLine($"\t\t\t\tError: SaveDNSAsync try {i}");
+			await Task.Delay(5000);
+		}
+
+		return response;
 	}
 
 	async public Task<Response<object>?> LetsEncryptAsync(string domainname, List<string> challenges)
@@ -142,38 +164,12 @@ public class VimexxApi
 		if (getdnsresponse.result == false)
 			return new Response<object>() { result = getdnsresponse.result, message = getdnsresponse.message };
 
-		var records = getdnsresponse.data.dns_records.Where(x => !x.name.StartsWith("_acme-challenge.")).ToList();
+		var records = getdnsresponse.data.dns_records.Where(x => !x.Name.StartsWith("_acme-challenge.")).ToList();
 
 		foreach(var challenge in challenges)
-			records.Add(new DnsRecord() { name = "_acme-challenge", content = challenge, type = "TXT", ttl = 300 });
+			records.Add(new DnsRecord() { Name = "_acme-challenge", Content = challenge, Type = "TXT", TTL = 300 });
 
 		return await SaveDNSAsync(domainname, records);
 	}
-
-	async public Task<Response<object>?> LetsEncryptAsync(string domainname, string challenge)
-	{
-		var getdnsresponse = await GetDNSAsync(domainname);
-
-		if (getdnsresponse == null)
-		{
-			log.AppendLine($"Error: LetsEncryptAsync GetDNSAsync returns null");
-			return null;
-		}
-
-		if (getdnsresponse.result == false)
-			return new Response<object>() { result = getdnsresponse.result, message = getdnsresponse.message };
-
-		var records = getdnsresponse.data.dns_records;
-
-		// clear all _acme-challenge records
-		if (string.IsNullOrWhiteSpace(challenge))
-			records = records.Where(x => !x.name.StartsWith("_acme-challenge.")).ToList();
-
-		if(!string.IsNullOrWhiteSpace(challenge))
-			records.Add(new DnsRecord() { name = "_acme-challenge", content = challenge, type = "TXT", ttl = 300 });
-
-		return await SaveDNSAsync(domainname, records);
-	}
-
 
 }
