@@ -12,8 +12,6 @@ using Microsoft.Web.Administration;
 
 using Vimexx_API;
 
-
-
 namespace LetsEncryptIIS;
 
 public class CertHelper
@@ -45,17 +43,21 @@ public class CertHelper
 		log.AppendLine($"\t\t\tAdd {PathToPfx} to cert store {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task<VimexxApi> GetVimexxApiAsync(StringBuilder log)
+	async private static Task<VimexxApi?> GetVimexxApiAsync(StringBuilder log)
 	{
 		var sw = Stopwatch.StartNew();
 
 		var vimexxApi = new VimexxApi(log);
-		await vimexxApi.LoginAsync(
+		var status = await vimexxApi.LoginAsync(
 			Settings.Get("VimexxClientId"),
 			Settings.Get("VimexxClientKey"),
 			Settings.Get("VimexxUsername"),
 			Settings.Get("VimexxPassword"));
-		log.AppendLine($"\tGetVimexxApi {sw.ElapsedMilliseconds}ms");
+		if (status == null)
+			return null;
+
+		log.AppendLine($"\tGetVimexxApi {status} {sw.ElapsedMilliseconds}ms");
+
 		return vimexxApi;
 	}
 
@@ -64,13 +66,23 @@ public class CertHelper
 		log.AppendLine($"\t\t\tClearDnsChallenges started");
 		var sw = Stopwatch.StartNew();
 		var authorizations = await orderContext.Authorizations();
+
+		var domains = new List<string>();
+
 		foreach (var authz in authorizations)
 		{
 			var res = await authz.Resource();
-			var totalresult = await vimexxApi.LetsEncryptAsync(res.Identifier.Value, []);
-			if (totalresult == null && res != null && res.Identifier != null)
-				log.AppendLine($"Error: ClearAuthorizations: vimexxApi.LetsEncryptAsync returns null on {res.Identifier.Value}");
+			if (!domains.Contains(res.Identifier.Value))
+				domains.Add(res.Identifier.Value);
 		}
+
+		foreach(var domain in domains)
+		{
+			var totalresult = await vimexxApi.LetsEncryptAsync(domain, []);
+			if (totalresult == null)
+				log.AppendLine($"Error: ClearAuthorizations: vimexxApi.LetsEncryptAsync returns null on {domain}");
+		}
+
 		log.AppendLine($"\t\t\tClearDnsChallenges {sw.ElapsedMilliseconds}ms");
 	}
 
@@ -96,7 +108,7 @@ public class CertHelper
 			dict[domain].Add(dnsTxt);
 		}
 
-		log.AppendLine($"\t\t\t\tCreateDnsChallenge (getting challenges) {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tCreateDnsChallenge (getting challenges) {sw.ElapsedMilliseconds}ms");
 
 		sw.Restart();
 
@@ -111,7 +123,7 @@ public class CertHelper
 				log.AppendLine($"Error: vimexxApi.LetsEncryptAsync returns null on {domain}");
 		}
 
-		log.AppendLine($"\t\t\t\tCreateDnsChallenge (updating DNS entries) {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tCreateDnsChallenge (updating DNS entries) {sw.ElapsedMilliseconds}ms");
 
 		await Task.Delay(1000);
 
@@ -127,10 +139,11 @@ public class CertHelper
 			}
 		}
 
-		log.AppendLine($"\t\t\t\tCreateDnsChallenge Start Validating {sw.ElapsedMilliseconds}ms");
+		log.AppendLine($"\t\t\tCreateDnsChallenge Start Validating {sw.ElapsedMilliseconds}ms");
 	}
 
-	private async static Task CreateHttpChallenge(StringBuilder log, string? LocalhostDir, IEnumerable<IAuthorizationContext> authorizations)
+	private async static Task CreateHttpChallenge(StringBuilder log, string? LocalhostDir, 
+		IEnumerable<IAuthorizationContext> authorizations)
 	{
 		if (LocalhostDir == null)
 		{
@@ -188,7 +201,8 @@ public class CertHelper
 		log.AppendLine($"\t\t\tClearHttpChallenge {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
+	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log, 
+		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -221,6 +235,7 @@ public class CertHelper
 
 				if (AuthorizationStatus.Invalid == res?.Status)
 				{
+					
 					log.AppendLine($"\t\t\t\tCreateChallenge ERROR AuthorizationStatus.Invalid status in {sw.ElapsedMilliseconds}ms (bailing out)");
 
 					if (res?.Challenges.Count > 0)
@@ -229,7 +244,9 @@ public class CertHelper
 							log.AppendLine($"\t\t\t\t\tCHallengeError: {challenge?.Error.Detail}");
 					}
 
-					// cleanup
+					await authz.Deactivate();
+
+					// cleanup when in error
 					if (vimexxApi != null)
 						await ClearDnsChallenges(log, orderContext, vimexxApi);
 					else
@@ -267,7 +284,8 @@ public class CertHelper
 	}
 
 
-	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
+	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log, 
+		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -365,7 +383,8 @@ public class CertHelper
 		}
 	}
 
-	async private static Task<CertificateChain?> GetCertificateChainAsync(StringBuilder log, IKey privateKey, IOrderContext orderContext, string[] hosts, string domain)
+	async private static Task<CertificateChain?> GetCertificateChainAsync(StringBuilder log, 
+		IKey privateKey, IOrderContext orderContext, string[] hosts, string domain)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -406,7 +425,8 @@ public class CertHelper
 		return certificate;
 	}
 
-	async private static Task SaveCertificateAsync(StringBuilder log, IKey privateKey, CertificateChain certificate, string domain, bool UseStaging)
+	async private static Task SaveCertificateAsync(StringBuilder log, 
+		IKey privateKey, CertificateChain certificate, string domain, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -425,14 +445,20 @@ public class CertHelper
 		log.AppendLine($"\t\t\tSaveCertificate {domain}.pfx {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task ValidateDomainAsync(StringBuilder log, AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string domain, bool UseStaging)
+	async private static Task ValidateDomainAsync(StringBuilder log, 
+		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string domain, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
 
 		string[] hosts = [];
 
 		if (vimexxApi != null)
-			hosts = [domain, $"*.{domain}"];
+		{
+			if (domain.Split('.').Length == 2) // abc.com
+				hosts = [domain, $"*.{domain}"];
+			else  // abc.def.com
+				hosts = [domain];
+		}
 
 		if (LocalhostDir != null)
 			hosts = [domain];
@@ -615,7 +641,8 @@ public class CertHelper
 		Dns
 	}
 
-	async private static Task ChallengeDomainsAsync(StringBuilder log, List<string> domains, TypeChallenge challenge, bool UseStaging = false)
+	async private static Task ChallengeDomainsAsync(StringBuilder log, 
+		List<string> domains, TypeChallenge challenge, bool UseStaging = false)
 	{
 		try
 		{
@@ -659,8 +686,13 @@ public class CertHelper
 							await ValidateDomainAsync(log, acmeContext, null, LocalhostDir, domain, UseStaging);
 							break;
 						case TypeChallenge.Dns:
-							vimexxApi ??= await GetVimexxApiAsync(log);
-							await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
+							vimexxApi = await GetVimexxApiAsync(log); // login again for every domain! 2024-08-21
+							if( vimexxApi != null )
+								await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
+							else
+								log.AppendLine($"\tGetVimexxApi ERROR");
+							vimexxApi = null;
+							log.AppendLine($"\tGetVimexxApi usage ended {sw.Elapsed}");
 							break;
 						default:
 							break;

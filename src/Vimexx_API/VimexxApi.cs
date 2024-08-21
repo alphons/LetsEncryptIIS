@@ -77,7 +77,7 @@ public class VimexxApi(StringBuilder log)
 		return default;
 	}
 
-	async public Task LoginAsync(string clientId, string clientKey, string username, string password, bool testmodus = false)
+	async public Task<string?> LoginAsync(string clientId, string clientKey, string username, string password, bool testmodus = false)
 	{
 		if (testmodus)
 			this.endpoint = API_URL + "/apitest/v1";
@@ -109,8 +109,9 @@ public class VimexxApi(StringBuilder log)
 			this.token = await JsonSerializer.DeserializeAsync<AuthToken>(stream);
 
 			if(this.token != null)
-				log.AppendLine($"VimexxApi::AuthToken type:{this.token.token_type} exp:{this.token.expires_in}");
+				return $"type:{this.token.token_type} exp:{this.token.expires_in}";
 		}
+		return null;
 	}
 
 	async public Task<GetDNSResponse?> GetDNSAsync(string domainname)
@@ -121,7 +122,7 @@ public class VimexxApi(StringBuilder log)
 
 		for (int i = 0; i < 5; i++)
 		{
-			response = await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[0], tld = args[1] });
+			response = await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1] });
 			if (response != null)
 				break;
 			log.AppendLine($"\t\t\t\tError: GetDNSAsync try {i}");
@@ -135,13 +136,13 @@ public class VimexxApi(StringBuilder log)
 	{
 		var args = domainname.Split('.');
 
-		dns_records.ForEach(x => x.TTL = 3600);
+		dns_records.Where(x => x.TTL == null).ToList().ForEach(x => x.TTL = 3600); // set everything to an hour
 
 		SaveDNSResponse? response = null;
 
 		for (int i = 0; i < 5; i++)
 		{
-			response = await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[0], tld = args[1], dns_records });
+			response = await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1], dns_records });
 			if (response != null)
 				break;
 			log.AppendLine($"\t\t\t\tError: SaveDNSAsync try {i}");
@@ -163,11 +164,22 @@ public class VimexxApi(StringBuilder log)
 
 		if (getdnsresponse.result == false)
 			return new Response<object>() { result = getdnsresponse.result, message = getdnsresponse.message };
-
+	
+		// filter out, the old dns challenges
 		var records = getdnsresponse.data.dns_records.Where(x => !x.Name.StartsWith("_acme-challenge.")).ToList();
 
-		foreach(var challenge in challenges)
-			records.Add(new DnsRecord() { Name = "_acme-challenge", Content = challenge, Type = "TXT", TTL = 300 });
+		var name = "_acme-challenge";
+
+		if (challenges.Count > 0)
+		{
+			var args = domainname.Split('.');
+			if (args.Length > 2)
+				name += "." + args[^3];
+		}
+
+		// put in new challenges, or none, if challenges = empty array
+		foreach (var challenge in challenges)
+			records.Add(new DnsRecord() { Name = name, Content = challenge, Type = "TXT", TTL = 300 });
 
 		return await SaveDNSAsync(domainname, records);
 	}
