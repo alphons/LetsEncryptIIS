@@ -22,12 +22,22 @@ En niet meer op elke server afzonderlijk.
 
 var staging = (args.Length > 0 && args[0] == "staging");
 
+var admin = true;
+try
+{
 #pragma warning disable CA1416
-if (new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator))
+	admin = new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
+#pragma warning restore CA1416
+}
+catch
+{
+	admin = true;
+}
+
+if(admin)
 	await CertHelper.LetsEncryptDomainsAsync(staging);
 else
 	Console.WriteLine("run as administator");
-#pragma warning restore CA1416
 
 Console.WriteLine("ready");
 

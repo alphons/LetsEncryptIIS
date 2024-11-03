@@ -553,7 +553,15 @@ public class CertHelper
 	{
 		var sw = Stopwatch.StartNew();
 
-		var iisManager = new ServerManager(Settings.Get("LocalConfig"));
+		var localConfigFile = Settings.Get("LocalConfig");
+
+		if (string.IsNullOrWhiteSpace(localConfigFile))
+		{
+			log.AppendLine($"\tRefreshIISBindings Skipped (no LocalConfig)");
+			return;
+		}
+
+		var iisManager = new ServerManager(localConfigFile);
 
 		foreach (var site in iisManager.Sites)
 		{
