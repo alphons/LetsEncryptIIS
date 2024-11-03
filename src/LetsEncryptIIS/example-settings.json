@@ -1,5 +1,6 @@
 {
 	"CertificateStoreName": "WebHosting",
+	"CertificateStoreLocation": "LocalMachine",
 	"AcmeStaging": "acme-staging",
 	"AcmeProduction": "acme-production",
 	"PFXPassword": "Pas5w0rd!321",

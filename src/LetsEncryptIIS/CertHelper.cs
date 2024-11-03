@@ -21,7 +21,7 @@ public class CertHelper
 		var sw = Stopwatch.StartNew();
 		try
 		{
-			using var store = new X509Store(Settings.Get("CertificateStoreName"), StoreLocation.LocalMachine);
+			using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
 
 			store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
@@ -496,7 +496,7 @@ public class CertHelper
 	/// <returns></returns>
 	private static bool CheckDomainCert(string domain)
 	{
-		using var store = new X509Store(Settings.Get("CertificateStoreName"), StoreLocation.LocalMachine);
+		using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
 
 		store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
@@ -523,7 +523,7 @@ public class CertHelper
 	{
 		var certhash = Array.Empty<byte>();
 
-		using var store = new X509Store(Settings.Get("CertificateStoreName"), StoreLocation.LocalMachine);
+		using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
 
 		store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadOnly);
 
