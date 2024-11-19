@@ -1,4 +1,5 @@
 {
+	"UnixMakeSureDirExist": "~/.dotnet/corefx/cryptography/x509stores/my",
 	"CertificateStoreName": "WebHosting",
 	"CertificateStoreLocation": "LocalMachine",
 	"AcmeStaging": "acme-staging",
