@@ -1,11 +1,11 @@
-﻿
-using System.Collections.Generic;
+﻿using System.Text.Json.Serialization;
 
 namespace Vimexx_API;
 
 public class DnsRecords 
 {
-	public List<DnsRecord> dns_records { get; set; }
+	[JsonPropertyName("dns_records")]
+	public List<DnsRecord> DNSRecords { get; set; } = [];
 }
 
 public class GetDNSResponse : Response<DnsRecords>

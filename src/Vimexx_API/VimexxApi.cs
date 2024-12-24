@@ -3,8 +3,6 @@ using System.Text.Json;
 
 // https://developers.whmcs.com/api/
 
-#nullable enable
-
 namespace Vimexx_API;
 
 public class VimexxApi(StringBuilder log)
@@ -38,7 +36,7 @@ public class VimexxApi(StringBuilder log)
 			httpClient.DefaultRequestHeaders.Add("User-Agent", USER_AGENT);
 
 			httpClient.DefaultRequestHeaders.Authorization = 
-				new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", this.token.access_token);
+				new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", this.token.AccessToken);
 
 			jsonRequest = JsonSerializer.Serialize(new { body = data, version = API_VERSION });
 
@@ -109,7 +107,7 @@ public class VimexxApi(StringBuilder log)
 			this.token = await JsonSerializer.DeserializeAsync<AuthToken>(stream);
 
 			if(this.token != null)
-				return $"type:{this.token.token_type} exp:{this.token.expires_in}";
+				return $"type:{this.token.TokenType} exp:{this.token.ExpiresIn}";
 		}
 		return null;
 	}
@@ -138,6 +136,22 @@ public class VimexxApi(StringBuilder log)
 
 		dns_records.Where(x => x.TTL == null).ToList().ForEach(x => x.TTL = 3600); // set everything to an hour
 
+		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_smtp._tcp.") && x.Prio == "0" && x.Port == null)
+			.ToList()
+			.ForEach(x => x.Port = 465);
+		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_smtp._tcp.") && x.Prio== "10" && x.Port == null)
+			.ToList()
+			.ForEach(x => x.Port = 587);
+
+		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_imap._tcp.") && x.Prio == "0" && x.Port == null)
+			.ToList()
+			.ForEach(x => x.Port = 143);
+		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_imap._tcp.") && x.Prio == "10" && x.Port == null)
+			.ToList()
+			.ForEach(x => x.Port = 993);
+
+		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Weight == null).ToList().ForEach(x => x.Weight = 0);
+
 		SaveDNSResponse? response = null;
 
 		for (int i = 0; i < 5; i++)
@@ -162,11 +176,17 @@ public class VimexxApi(StringBuilder log)
 			return null;
 		}
 
-		if (getdnsresponse.result == false)
-			return new Response<object>() { result = getdnsresponse.result, message = getdnsresponse.message };
+		if (getdnsresponse.Result == false)
+			return new Response<object>() { Result = getdnsresponse.Result, Message = getdnsresponse.Message };
 	
+		if(getdnsresponse.Data == null)
+		{
+			log.AppendLine($"Error: GetDNSAsync returned null Data on {domainname}");
+			return null;
+		}
+
 		// filter out, the old dns challenges
-		var records = getdnsresponse.data.dns_records.Where(x => !x.Name.StartsWith("_acme-challenge.")).ToList();
+		var records = getdnsresponse.Data.DNSRecords.Where(x => !x.Name.StartsWith("_acme-challenge.")).ToList();
 
 		var name = "_acme-challenge";
 
@@ -179,7 +199,7 @@ public class VimexxApi(StringBuilder log)
 
 		// put in new challenges, or none, if challenges = empty array
 		foreach (var challenge in challenges)
-			records.Add(new DnsRecord() { Name = name, Content = challenge, Type = "TXT", TTL = 300 });
+			records.Add(new DnsRecord() { Name = name, Content = challenge, Type = RecordTypeEnum.TXT, TTL = 300 });
 
 		return await SaveDNSAsync(domainname, records);
 	}
