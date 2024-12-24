@@ -13,7 +13,6 @@
     <None Remove="acme-staging\letsencrypt-stg-root-x1.der" />
     <None Remove="acme-staging\letsencrypt-stg-root-x1.pem" />
     <None Remove="example-settings.json" />
-    <None Remove="settings.json" />
     <None Remove="web.config.xml" />
   </ItemGroup>
 
