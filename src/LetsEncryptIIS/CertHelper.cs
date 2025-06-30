@@ -1,22 +1,20 @@
-﻿using System.Text;
-using System.Net.Mail;
-using System.Diagnostics;
-using System.Security.Cryptography.X509Certificates;
-
-using Certes;
+﻿using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
 using Certes.Pkcs;
-
 using Microsoft.Web.Administration;
-
+using System.Diagnostics;
+using System.Net.Mail;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using Vimexx_API;
 
 namespace LetsEncryptIIS;
 
 public class CertHelper
 {
-	async private static Task AddCertToStoreAsync(StringBuilder log, string PathToPfx)
+	async private static Task<bool> AddCertToStoreAsync(StringBuilder log, string PathToPfx)
 	{
 		var sw = Stopwatch.StartNew();
 		try
@@ -35,12 +33,16 @@ public class CertHelper
 
 			store.Add(certificate);
 			store.Close();
+
+			log.AppendLine($"\t\t\tAdd {PathToPfx} to cert store {sw.ElapsedMilliseconds}ms");
+
+			return true;
 		}
 		catch (Exception e)
 		{
 			log.AppendLine($"\t\t\tAddCertToStor ERROR {e.Message}");
 		}
-		log.AppendLine($"\t\t\tAdd {PathToPfx} to cert store {sw.ElapsedMilliseconds}ms");
+		return false;
 	}
 
 	async private static Task<VimexxApi?> GetVimexxApiAsync(StringBuilder log)
@@ -425,6 +427,16 @@ public class CertHelper
 		return certificate;
 	}
 
+	/// <summary>
+	/// Save cert to domain.pfx
+	/// </summary>
+	/// <param name="log"></param>
+	/// <param name="privateKey"></param>
+	/// <param name="certificate"></param>
+	/// <param name="domain"></param>
+	/// <param name="UseStaging"></param>
+	/// <returns></returns>
+
 	async private static Task SaveCertificateAsync(StringBuilder log, 
 		IKey privateKey, CertificateChain certificate, string domain, bool UseStaging)
 	{
@@ -476,8 +488,6 @@ public class CertHelper
 			if (certificate != null)
 			{
 				await SaveCertificateAsync(log, privateKey, certificate, domain, UseStaging);
-
-				await AddCertToStoreAsync(log, $"{domain}.pfx");
 			}
 
 			var authorizations = await orderContext.Authorizations();
@@ -500,8 +510,6 @@ public class CertHelper
 
 		store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
-		//var col = store.Certificates.Find(X509FindType.FindByIssuerDistinguishedName, "CN=R3, O=Let's Encrypt, C=US", false);
-
 		var certificates = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", true);
 
 		var valid = false;
@@ -511,35 +519,88 @@ public class CertHelper
 			var daysValid = ExpirationDate.Subtract(DateTime.Now).TotalDays;
 			if (daysValid > Settings.Get<double>("CertDaysBeforeExpire"))
 				valid = true;
-			else
-				store.Remove(certificate);
 		}
 		store.Close();
 		return valid;
 	}
 
-
-	private static byte[] GetDomainCertHash(string domain)
+	private static byte[] StringToByteArray(string hex)
 	{
-		var certhash = Array.Empty<byte>();
+		hex = hex.Replace(" ", "").Replace("-", ""); // Verwijder spaties en streepjes
+		int numberChars = hex.Length;
+		byte[] bytes = new byte[numberChars / 2];
+		for (int i = 0; i < numberChars; i += 2)
+		{
+			bytes[i / 2] = Convert.ToByte(hex.Substring(i, 2), 16);
+		}
+		return bytes;
+	}
 
+	private static byte[] GetCertHashFromPfx(StringBuilder sb, string domain)
+	{
+		try
+		{
+			var pfxFileName = $"{domain}.pfx";
+
+			if (File.Exists(pfxFileName))
+			{
+				using var certificate = new X509Certificate2(pfxFileName, Settings.Get("PFXPassword"), X509KeyStorageFlags.DefaultKeySet);
+
+				return certificate.GetCertHash();
+			}
+		}
+		catch (CryptographicException ex)
+		{
+			sb.AppendLine($"Fout bij het laden van het .pfx-bestand. Controleer het bestandspad of wachtwoord. {ex.Message}");
+		}
+		catch (Exception ex)
+		{
+			sb.AppendLine($"Onverwachte fout bij het verwerken van het .pfx-bestand. {ex.Equals}");
+		}
+
+		return [];
+	}
+
+	private static void RemoveDomainCertsFromStore(StringBuilder log, string domain)
+	{
 		using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
 
-		store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadOnly);
+		try
+		{
+			store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
-		// For staging: install acme-staging/letsencrypt-stg-root-x1.der into LocalMachine trusted root certificates
+			var col = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", false);
 
-		var col = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", false);
+			foreach (var c in col)
+			{
+				try
+				{
+					store.Remove(c);
+					log.AppendLine($"Certificaat met thumbprint {c.Thumbprint} verwijderd.");
+				}
+				catch (Exception ex)
+				{
+					log.AppendLine($"Fout bij verwijderen van certificaat {c.Thumbprint}: {ex.Message}");
+				}
+				finally
+				{
+					c.Dispose();
+				}
+			}
 
-		if (col.Count>1) // oops. maybe there are valid and invalid certs also, in this case, take only the valid one
-			col = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", true);
-
-		if (col.Count == 1)
-			certhash = (byte[])col[0].GetCertHash().Clone();
-
-		store.Close();
-
-		return certhash;
+			if (col.Count == 0)
+			{
+				log.AppendLine($"Geen certificaten gevonden voor CN={domain}.");
+			}
+		}
+		catch (Exception ex)
+		{
+			log.AppendLine($"Fout bij het openen van de certificaatwinkel of verwijderen van certificaten: {ex.Message}");
+		}
+		finally
+		{
+			store.Close();
+		}
 	}
 
 	/// <summary>
@@ -581,7 +642,7 @@ public class CertHelper
 				if (ii < 0)
 					continue;
 
-				var CertificateHash = GetDomainCertHash(domain);
+				var CertificateHash = GetCertHashFromPfx(log, domain);
 
 				if (CertificateHash.Length == 0)
 				{
@@ -590,7 +651,7 @@ public class CertHelper
 						ii = domain.IndexOf('.');
 						domain = domain[(ii + 1)..];  // strip www. or other names
 					}
-					CertificateHash = GetDomainCertHash(domain);
+					CertificateHash = GetCertHashFromPfx(log, domain);
 
 					if (CertificateHash.Length == 0)
 						continue;
@@ -601,8 +662,11 @@ public class CertHelper
 
 				log.AppendLine($"\t\tRefreshIISBindings {binding.Host} using new cert {domain}");
 
-				// remove old binding
 				site.Bindings.Remove(binding);
+
+				RemoveDomainCertsFromStore(log, domain);
+
+				await AddCertToStoreAsync(log, $"{domain}.pfx");
 
 				// add the new binding at the back of the collection
 				site.Bindings.Add(binding.BindingInformation, CertificateHash, Settings.Get("CertificateStoreName"), SslFlags.Sni);
