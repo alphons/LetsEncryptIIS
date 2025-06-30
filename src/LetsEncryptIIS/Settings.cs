@@ -25,9 +25,9 @@ public static class Settings
 		return dict[Name].Deserialize<T>();
 	}
 
-	public static string Get(string Name)
+	public static string Get(string Name, string DefaultString = "<empty>")
 	{
 		var val = Get<string>(Name);
-		return val ?? "<empty>";
+		return val ?? DefaultString;
 	}
 }

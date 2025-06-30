@@ -10,6 +10,7 @@ using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Vimexx_API;
 
+
 namespace LetsEncryptIIS;
 
 public class CertHelper
@@ -19,7 +20,8 @@ public class CertHelper
 		var sw = Stopwatch.StartNew();
 		try
 		{
-			using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
+			using var store = new X509Store(Settings.Get("CertificateStoreName"), 
+				Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation", "LocalMachine")));
 
 			store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
@@ -42,6 +44,7 @@ public class CertHelper
 		{
 			log.AppendLine($"\t\t\tAddCertToStor ERROR {e.Message}");
 		}
+		
 		return false;
 	}
 
@@ -504,23 +507,31 @@ public class CertHelper
 	/// </summary>
 	/// <param name="domain"></param>
 	/// <returns></returns>
-	private static bool CheckDomainCert(string domain)
+	private static bool CheckDomainCert(StringBuilder log, string domain)
 	{
-		using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
-
-		store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
-
-		var certificates = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", true);
-
-		var valid = false;
-		foreach (var certificate in certificates)
+		bool valid = false;
+		try
 		{
-			var ExpirationDate = DateTime.Parse(certificate.GetExpirationDateString());
-			var daysValid = ExpirationDate.Subtract(DateTime.Now).TotalDays;
-			if (daysValid > Settings.Get<double>("CertDaysBeforeExpire"))
-				valid = true;
+			using var store = new X509Store(Settings.Get("CertificateStoreName"),
+				Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation", "LocalMachine")));
+
+			store.Open(OpenFlags.OpenExistingOnly);
+
+			var certificates = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", true);
+
+			foreach (var certificate in certificates)
+			{
+				var ExpirationDate = DateTime.Parse(certificate.GetExpirationDateString());
+				var daysValid = ExpirationDate.Subtract(DateTime.Now).TotalDays;
+				if (daysValid > Settings.Get<double>("CertDaysBeforeExpire"))
+					valid = true;
+			}
+			store.Close();
 		}
-		store.Close();
+		catch(Exception ex)
+		{
+			log.AppendLine($"CheckDomainCert error: {ex.Message}");
+		}
 		return valid;
 	}
 
@@ -563,10 +574,11 @@ public class CertHelper
 
 	private static void RemoveDomainCertsFromStore(StringBuilder log, string domain)
 	{
-		using var store = new X509Store(Settings.Get("CertificateStoreName"), Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation")));
-
 		try
 		{
+			using var store = new X509Store(Settings.Get("CertificateStoreName"),
+				Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation", "LocalMachine")));
+
 			store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
 			var col = store.Certificates.Find(X509FindType.FindBySubjectDistinguishedName, $"CN={domain}", false);
@@ -592,14 +604,12 @@ public class CertHelper
 			{
 				log.AppendLine($"Geen certificaten gevonden voor CN={domain}.");
 			}
+
+			store.Close();
 		}
 		catch (Exception ex)
 		{
 			log.AppendLine($"Fout bij het openen van de certificaatwinkel of verwijderen van certificaten: {ex.Message}");
-		}
-		finally
-		{
-			store.Close();
 		}
 	}
 
@@ -731,7 +741,7 @@ public class CertHelper
 				var domain = domains[i];
 				if (string.IsNullOrWhiteSpace(domain))
 					continue;
-				if (CheckDomainCert(domain))
+				if (CheckDomainCert(log, domain))
 				{
 					domains.Remove(domain);
 					log.AppendLine($"\t\tCert for {domain} is valid");
