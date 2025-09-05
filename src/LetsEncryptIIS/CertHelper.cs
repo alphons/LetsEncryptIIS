@@ -435,17 +435,17 @@ public class CertHelper
 	/// </summary>
 	/// <param name="log"></param>
 	/// <param name="privateKey"></param>
-	/// <param name="certificate"></param>
+	/// <param name="certificateChain"></param>
 	/// <param name="domain"></param>
 	/// <param name="UseStaging"></param>
 	/// <returns></returns>
 
 	async private static Task SaveCertificateAsync(StringBuilder log, 
-		IKey privateKey, CertificateChain certificate, string domain, bool UseStaging)
+		IKey privateKey, CertificateChain certificateChain, string domain, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
 
-		var pfxBuilder = certificate.ToPfx(privateKey);
+		var pfxBuilder = certificateChain.ToPfx(privateKey);
 
 		if (UseStaging)
 		{
@@ -453,7 +453,7 @@ public class CertHelper
 			pfxBuilder.AddIssuer(statgingIssuerPem);
 		}
 
-		var pfxData = pfxBuilder.Build($"{domain} - {DateTime.Now}", Settings.Get("PFXPassword"));
+		var pfxData = pfxBuilder.Build($"{domain} - {DateTime.Now.AddDays(90):dd-MM}", Settings.Get("PFXPassword"));
 
 		await File.WriteAllBytesAsync($"{domain}.pfx", pfxData);
 
@@ -617,10 +617,12 @@ public class CertHelper
 	/// RefreshBindingsAsync only works when reversed indexed deleting binding 
 	/// and adding them again at the end of the collection.
 	/// There is NO other way. This is the buggy part of ServerManager.
+	/// DNS CHallenge: Now it binds allways to the tld cert not tot the multisubdomain fqdn cert
+	/// HTTP Challenge: tld = fqdn
 	/// </summary>
 	/// <param name="log"></param>
 	/// <returns></returns>
-	async private static Task RefreshIISBindingsAsync(StringBuilder log)
+	async private static Task RefreshIISBindingsAsync(StringBuilder log, TypeChallenge challenge)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -643,40 +645,49 @@ public class CertHelper
 				if (binding.Protocol != "https")
 					continue;
 
-				var domain = binding.Host;
+				var fqdn = binding.Host;
 
-				if (string.IsNullOrWhiteSpace(domain))
+				if (string.IsNullOrWhiteSpace(fqdn))
 					continue;
 
-				var ii = domain.IndexOf('.');
+				var ii = fqdn.IndexOf('.');
 				if (ii < 0)
 					continue;
 
-				var CertificateHash = GetCertHashFromPfx(log, domain);
+				var tld = fqdn;
 
-				if (CertificateHash.Length == 0)
+				if (challenge == TypeChallenge.Dns)
 				{
-					while (domain.Split('.').Length > 2)
+					while (tld.Split('.').Length > 2)
 					{
-						ii = domain.IndexOf('.');
-						domain = domain[(ii + 1)..];  // strip www. or other names
+						ii = tld.IndexOf('.');
+						tld = tld[(ii + 1)..];  // strip www. or other names
 					}
-					CertificateHash = GetCertHashFromPfx(log, domain);
-
-					if (CertificateHash.Length == 0)
-						continue;
 				}
 
-				if (binding.CertificateHash != null && binding.CertificateHash.SequenceEqual(CertificateHash))
+				// Now we have the full-domain and for DNS channelnges its tld
+				// but only the CertificateHash from tld is needed
+
+				var CertificateHash = GetCertHashFromPfx(log, tld);
+
+				// nothing found, and that is weird ;-)
+				if (binding.CertificateHash == null || CertificateHash.Length == 0)
 					continue;
 
-				log.AppendLine($"\t\tRefreshIISBindings {binding.Host} using new cert {domain}");
+				// nothing changed, so not needed at this moment
+				if (binding.CertificateHash.SequenceEqual(CertificateHash))
+					continue;
+
+				log.AppendLine($"\t\tRefreshIISBindings {binding.Host} using new cert {tld} {challenge} {fqdn}");
 
 				site.Bindings.Remove(binding);
 
-				RemoveDomainCertsFromStore(log, domain);
+				RemoveDomainCertsFromStore(log, fqdn);
 
-				await AddCertToStoreAsync(log, $"{domain}.pfx");
+				if(fqdn != tld)
+					RemoveDomainCertsFromStore(log, tld);
+
+				await AddCertToStoreAsync(log, $"{tld}.pfx");
 
 				// add the new binding at the back of the collection
 				site.Bindings.Add(binding.BindingInformation, CertificateHash, Settings.Get("CertificateStoreName"), SslFlags.Sni);
@@ -780,7 +791,7 @@ public class CertHelper
 							break;
 					}
 				}
-				await RefreshIISBindingsAsync(log);
+				await RefreshIISBindingsAsync(log, challenge);
 			}
 
 			log.AppendLine($"ChallengeDomainsAsync ended (normal) {sw.Elapsed}");
