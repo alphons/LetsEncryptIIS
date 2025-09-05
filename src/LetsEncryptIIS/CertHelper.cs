@@ -3,6 +3,7 @@ using Certes.Acme;
 using Certes.Acme.Resource;
 using Certes.Pkcs;
 using Microsoft.Web.Administration;
+using Org.BouncyCastle.Asn1.Crmf;
 using System.Diagnostics;
 using System.Net.Mail;
 using System.Security.Cryptography;
@@ -20,7 +21,7 @@ public class CertHelper
 		var sw = Stopwatch.StartNew();
 		try
 		{
-			using var store = new X509Store(Settings.Get("CertificateStoreName"), 
+			using var store = new X509Store(Settings.Get("CertificateStoreName"),
 				Enum.Parse<StoreLocation>(Settings.Get("CertificateStoreLocation", "LocalMachine")));
 
 			store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
@@ -44,7 +45,7 @@ public class CertHelper
 		{
 			log.AppendLine($"\t\t\tAddCertToStor ERROR {e.Message}");
 		}
-		
+
 		return false;
 	}
 
@@ -81,7 +82,7 @@ public class CertHelper
 				domains.Add(res.Identifier.Value);
 		}
 
-		foreach(var domain in domains)
+		foreach (var domain in domains)
 		{
 			var totalresult = await vimexxApi.LetsEncryptAsync(domain, []);
 			if (totalresult == null)
@@ -147,7 +148,7 @@ public class CertHelper
 		log.AppendLine($"\t\t\tCreateDnsChallenge Start Validating {sw.ElapsedMilliseconds}ms");
 	}
 
-	private async static Task CreateHttpChallenge(StringBuilder log, string? LocalhostDir, 
+	private async static Task CreateHttpChallenge(StringBuilder log, string? LocalhostDir,
 		IEnumerable<IAuthorizationContext> authorizations)
 	{
 		if (LocalhostDir == null)
@@ -206,7 +207,7 @@ public class CertHelper
 		log.AppendLine($"\t\t\tClearHttpChallenge {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log, 
+	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log,
 		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
 	{
 		var sw = Stopwatch.StartNew();
@@ -240,7 +241,7 @@ public class CertHelper
 
 				if (AuthorizationStatus.Invalid == res?.Status)
 				{
-					
+
 					log.AppendLine($"\t\t\t\tCreateChallenge ERROR AuthorizationStatus.Invalid status in {sw.ElapsedMilliseconds}ms (bailing out)");
 
 					if (res?.Challenges.Count > 0)
@@ -289,7 +290,7 @@ public class CertHelper
 	}
 
 
-	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log, 
+	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log,
 		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
 	{
 		var sw = Stopwatch.StartNew();
@@ -388,7 +389,7 @@ public class CertHelper
 		}
 	}
 
-	async private static Task<CertificateChain?> GetCertificateChainAsync(StringBuilder log, 
+	async private static Task<CertificateChain?> GetCertificateChainAsync(StringBuilder log,
 		IKey privateKey, IOrderContext orderContext, string[] hosts, string domain)
 	{
 		var sw = Stopwatch.StartNew();
@@ -440,7 +441,7 @@ public class CertHelper
 	/// <param name="UseStaging"></param>
 	/// <returns></returns>
 
-	async private static Task SaveCertificateAsync(StringBuilder log, 
+	async private static Task SaveCertificateAsync(StringBuilder log,
 		IKey privateKey, CertificateChain certificateChain, string domain, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
@@ -460,7 +461,7 @@ public class CertHelper
 		log.AppendLine($"\t\t\tSaveCertificate {domain}.pfx {sw.ElapsedMilliseconds}ms");
 	}
 
-	async private static Task ValidateDomainAsync(StringBuilder log, 
+	async private static Task ValidateDomainAsync(StringBuilder log,
 		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string domain, bool UseStaging)
 	{
 		var sw = Stopwatch.StartNew();
@@ -528,10 +529,11 @@ public class CertHelper
 			}
 			store.Close();
 		}
-		catch(Exception ex)
+		catch (Exception ex)
 		{
 			log.AppendLine($"CheckDomainCert error: {ex.Message}");
 		}
+
 		return valid;
 	}
 
@@ -588,11 +590,11 @@ public class CertHelper
 				try
 				{
 					store.Remove(c);
-					log.AppendLine($"Certificaat met thumbprint {c.Thumbprint} verwijderd.");
+					log.AppendLine($"\t\t\tCertificaat met thumbprint {c.Thumbprint} verwijderd.");
 				}
 				catch (Exception ex)
 				{
-					log.AppendLine($"Fout bij verwijderen van certificaat {c.Thumbprint}: {ex.Message}");
+					log.AppendLine($"\t\t\tFout bij verwijderen van certificaat {c.Thumbprint}: {ex.Message}");
 				}
 				finally
 				{
@@ -602,7 +604,7 @@ public class CertHelper
 
 			if (col.Count == 0)
 			{
-				log.AppendLine($"Geen certificaten gevonden voor CN={domain}.");
+				log.AppendLine($"\t\t\tGeen certificaten gevonden voor CN={domain}.");
 			}
 
 			store.Close();
@@ -678,13 +680,13 @@ public class CertHelper
 				if (binding.CertificateHash.SequenceEqual(CertificateHash))
 					continue;
 
-				log.AppendLine($"\t\tRefreshIISBindings {binding.Host} using new cert {tld} {challenge} {fqdn}");
+				log.AppendLine($"\t\tRefreshIISBindings {binding.Host} using new cert {tld}");
 
 				site.Bindings.Remove(binding);
 
 				RemoveDomainCertsFromStore(log, fqdn);
 
-				if(fqdn != tld)
+				if (fqdn != tld)
 					RemoveDomainCertsFromStore(log, tld);
 
 				await AddCertToStoreAsync(log, $"{tld}.pfx");
@@ -734,7 +736,37 @@ public class CertHelper
 		Dns
 	}
 
-	async private static Task ChallengeDomainsAsync(StringBuilder log, 
+
+	// cert staat op disk, en is valid, dan kan deze later in de store komen
+	private static async Task<bool> IsValidCertOnDiskAsync(StringBuilder log, string domain)
+	{
+
+		var pfxFileName = $"{domain}.pfx";
+
+		if (!File.Exists(pfxFileName))
+			return false;
+
+		using var certificate = new X509Certificate2(pfxFileName, Settings.Get("PFXPassword"), X509KeyStorageFlags.DefaultKeySet);
+
+		var ExpirationDate = DateTime.Parse(certificate.GetExpirationDateString());
+		
+		var daysValid = ExpirationDate.Subtract(DateTime.Now).TotalDays;
+		if (daysValid > Settings.Get<double>("CertDaysBeforeExpire"))
+		{
+			log.AppendLine($"\t\tIsValidCertOnDisk found for {domain} days:{(int)daysValid}");
+
+			RemoveDomainCertsFromStore(log, domain);
+
+			var status = await AddCertToStoreAsync(log, pfxFileName);
+
+			return status;
+		}
+
+		// helaas, toch oud cert op disk
+		return false;
+	}
+
+	async private static Task ChallengeDomainsAsync(StringBuilder log,
 		List<string> domains, TypeChallenge challenge, bool UseStaging = false)
 	{
 		try
@@ -773,14 +805,18 @@ public class CertHelper
 
 				foreach (var domain in domains)
 				{
-					switch(challenge)
+					// check if cert on disk is valid date, continue
+					if (await IsValidCertOnDiskAsync(log, domain))
+						continue;
+
+					switch (challenge)
 					{
 						case TypeChallenge.Http:
 							await ValidateDomainAsync(log, acmeContext, null, LocalhostDir, domain, UseStaging);
 							break;
 						case TypeChallenge.Dns:
 							vimexxApi = await GetVimexxApiAsync(log); // login again for every domain! 2024-08-21
-							if( vimexxApi != null )
+							if (vimexxApi != null)
 								await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
 							else
 								log.AppendLine($"\tGetVimexxApi ERROR");
@@ -806,7 +842,7 @@ public class CertHelper
 	{
 		var log = new StringBuilder();
 
-		if(UseStaging)
+		if (UseStaging)
 			log.AppendLine("***STAGING***");
 
 		var domainsDns = Settings.Get<List<string>>("DnsChallenges");
