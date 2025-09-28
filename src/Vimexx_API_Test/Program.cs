@@ -13,12 +13,12 @@ var sb = new StringBuilder();
 
 var api = new VimexxApi(sb);
 
-await api.LoginAsync(VimexxClientId, VimexxClientKey, VimexxUsername, VimexxPassword, false);
+await api.LoginAsync(VimexxClientId, VimexxClientKey, VimexxUsername, VimexxPassword, false, cts.Token);
 
 var result = await api.GetDNSAsync("hw.nl", cts.Token);
 if (result?.Data?.DNSRecords != null)
 {
-	var saved = await api.SaveDNSAsync("hw.nl", result.Data.DNSRecords, cts.Token);
+	_ = await api.SaveDNSAsync("hw.nl", result.Data.DNSRecords, cts.Token);
 }
 
 Console.WriteLine(sb.ToString());

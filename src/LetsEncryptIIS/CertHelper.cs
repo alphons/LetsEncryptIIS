@@ -48,7 +48,7 @@ public class CertHelper
 		return false;
 	}
 
-	async private static Task<VimexxApi?> GetVimexxApiAsync(StringBuilder log)
+	async private static Task<VimexxApi?> GetVimexxApiAsync(StringBuilder log, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -57,7 +57,9 @@ public class CertHelper
 			Settings.Get("VimexxClientId"),
 			Settings.Get("VimexxClientKey"),
 			Settings.Get("VimexxUsername"),
-			Settings.Get("VimexxPassword"));
+			Settings.Get("VimexxPassword"),
+			false,
+			ct);
 		if (status == null)
 			return null;
 
@@ -814,7 +816,7 @@ public class CertHelper
 							await ValidateDomainAsync(log, acmeContext, null, LocalhostDir, domain, UseStaging, ct);
 							break;
 						case TypeChallenge.Dns:
-							vimexxApi = await GetVimexxApiAsync(log); // login again for every domain! 2024-08-21
+							vimexxApi = await GetVimexxApiAsync(log, ct); // login again for every domain! 2024-08-21
 							if (vimexxApi != null)
 								await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging, ct);
 							else

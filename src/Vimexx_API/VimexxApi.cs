@@ -75,7 +75,7 @@ public class VimexxApi(StringBuilder log)
 		return default;
 	}
 
-	async public Task<string?> LoginAsync(string clientId, string clientKey, string username, string password, bool testmodus = false)
+	async public Task<string?> LoginAsync(string clientId, string clientKey, string username, string password, bool testmodus, CancellationToken ct)
 	{
 		if (testmodus)
 			this.endpoint = API_URL + "/apitest/v1";
@@ -96,15 +96,15 @@ public class VimexxApi(StringBuilder log)
 
 		var req = new HttpRequestMessage(HttpMethod.Post, API_URL + "/auth/token") { Content = new FormUrlEncodedContent(data) };
 
-		var httpResponseMessage = await httpClient.SendAsync(req);
+		var httpResponseMessage = await httpClient.SendAsync(req, ct);
 
 		httpResponseMessage.EnsureSuccessStatusCode();
 
 		if (httpResponseMessage.IsSuccessStatusCode)
 		{
-			var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
+			var stream = await httpResponseMessage.Content.ReadAsStreamAsync(ct);
 
-			this.token = await JsonSerializer.DeserializeAsync<AuthToken>(stream);
+			this.token = await JsonSerializer.DeserializeAsync<AuthToken>(stream, JsonSerializerOptions.Default, ct);
 
 			if(this.token != null)
 				return $"type:{this.token.TokenType} exp:{this.token.ExpiresIn}";
