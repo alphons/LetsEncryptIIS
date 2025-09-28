@@ -7,7 +7,7 @@ namespace Vimexx_API;
 
 public class VimexxApi(StringBuilder log)
 {
-	private const string USER_AGENT = "Vimexx-WHMCS api agent .NET core 1.0";
+	private const string USER_AGENT = "Vimexx-WHMCS api agent .NET core 1.1";
 	private const string API_URL = "https://api.vimexx.nl";
 	private const string API_VERSION = "8.6.1-release.1";
 
@@ -18,7 +18,7 @@ public class VimexxApi(StringBuilder log)
 	private readonly StringBuilder log = log;
 
 	// we do serialization because vimexx tent to error a lot!! so we can debug
-	async private Task<T?> RequestAsync<T>(HttpMethod method, string apiMethod, object data)
+	async private Task<T?> RequestAsync<T>(HttpMethod method, string apiMethod, object data, CancellationToken ct)
 	{
 		var jsonResult = string.Empty;
 		var jsonRequest = string.Empty;
@@ -45,31 +45,31 @@ public class VimexxApi(StringBuilder log)
 				Content = new StringContent(jsonRequest, Encoding.UTF8, "application/json")
 			};
 
-			using var httpResponseMessage = await httpClient.SendAsync(request);
+			using var httpResponseMessage = await httpClient.SendAsync(request, ct);
 
 			httpResponseMessage.EnsureSuccessStatusCode();
 
 			if (httpResponseMessage.IsSuccessStatusCode)
 			{
-				using var stream = await httpResponseMessage.Content.ReadAsStreamAsync();
+				using var stream = await httpResponseMessage.Content.ReadAsStreamAsync(ct);
 
 				using var sr = new StreamReader(stream);
 
-				jsonResult = await sr.ReadToEndAsync();
+				jsonResult = await sr.ReadToEndAsync(ct);
 
 				try
 				{
 					return JsonSerializer.Deserialize<T>(jsonResult);
 				}
-				catch
+				catch(Exception ex)
 				{
-					log.AppendLine($"Error: Deserialize: {method} {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
+					log.AppendLine($"Error: {ex.Message} {ex.InnerException?.Message} Deserialize: {method} {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
 				}
 			}
 		}
 		catch(Exception eee)
 		{
-			log.AppendLine($"Error: Exception: {eee.Message}: {method} {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
+			log.AppendLine($"Error: Exception: {eee.Message} {eee.InnerException?.Message}: {method} {apiMethod}{Environment.NewLine}{jsonRequest}{Environment.NewLine}{jsonResult}{Environment.NewLine}");
 		}
 
 		return default;
@@ -82,12 +82,12 @@ public class VimexxApi(StringBuilder log)
 
 		List<KeyValuePair<string, string>> data = new Dictionary<string, string>
 			{
-				{ "grant_type",     "password" },
-				{ "client_id",      clientId },
-				{ "client_secret",  clientKey },
-				{ "username",       username },
-				{ "password",       password },
-				{ "scope",          "whmcs-access" }
+				{ "grant_type",		"password" },
+				{ "client_id",		clientId },
+				{ "client_secret",	clientKey },
+				{ "username",		username },
+				{ "password",		password },
+				{ "scope",			"whmcs-access" }
 			}.ToList();
 
 		var httpClient = new HttpClient();
@@ -112,25 +112,26 @@ public class VimexxApi(StringBuilder log)
 		return null;
 	}
 
-	async public Task<GetDNSResponse?> GetDNSAsync(string domainname)
+	async public Task<GetDNSResponse?> GetDNSAsync(string domainname, CancellationToken ct)
 	{
 		var args = domainname.Split('.');
 
 		GetDNSResponse? response = null;
 
-		for (int i = 0; i < 5; i++)
+		for (int i = 1; i <= 5; i++)
 		{
-			response = await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1] });
+			response = await RequestAsync<GetDNSResponse>(HttpMethod.Post, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1] }, ct);
 			if (response != null)
 				break;
 			log.AppendLine($"\t\t\t\tError: GetDNSAsync try {i}");
-			await Task.Delay(5000);
+
+			await Task.Delay(5000, ct);
 		}
 
 		return response;
 	}
 
-	async public Task<SaveDNSResponse?> SaveDNSAsync(string domainname, List<DnsRecord> dns_records)
+	async public Task<SaveDNSResponse?> SaveDNSAsync(string domainname, List<DnsRecord> dns_records, CancellationToken ct)
 	{
 		var args = domainname.Split('.');
 
@@ -156,19 +157,19 @@ public class VimexxApi(StringBuilder log)
 
 		for (int i = 0; i < 5; i++)
 		{
-			response = await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1], dns_records });
+			response = await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1], dns_records }, ct);
 			if (response != null)
 				break;
 			log.AppendLine($"\t\t\t\tError: SaveDNSAsync try {i}");
-			await Task.Delay(5000);
+			await Task.Delay(5000, ct);
 		}
 
 		return response;
 	}
 
-	async public Task<Response<object>?> LetsEncryptAsync(string domainname, List<string> challenges)
+	async public Task<Response<object>?> LetsEncryptAsync(string domainname, List<string> challenges, CancellationToken ct)
 	{
-		var getdnsresponse = await GetDNSAsync(domainname);
+		var getdnsresponse = await GetDNSAsync(domainname, ct);
 
 		if (getdnsresponse == null)
 		{
@@ -201,7 +202,7 @@ public class VimexxApi(StringBuilder log)
 		foreach (var challenge in challenges)
 			records.Add(new DnsRecord() { Name = name, Content = challenge, Type = RecordTypeEnum.TXT, TTL = 300 });
 
-		return await SaveDNSAsync(domainname, records);
+		return await SaveDNSAsync(domainname, records, ct);
 	}
 
 }

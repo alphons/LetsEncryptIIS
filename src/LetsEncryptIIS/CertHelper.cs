@@ -3,7 +3,6 @@ using Certes.Acme;
 using Certes.Acme.Resource;
 using Certes.Pkcs;
 using Microsoft.Web.Administration;
-using Org.BouncyCastle.Asn1.Crmf;
 using System.Diagnostics;
 using System.Net.Mail;
 using System.Security.Cryptography;
@@ -16,7 +15,7 @@ namespace LetsEncryptIIS;
 
 public class CertHelper
 {
-	async private static Task<bool> AddCertToStoreAsync(StringBuilder log, string PathToPfx)
+	async private static Task<bool> AddCertToStoreAsync(StringBuilder log, string PathToPfx, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 		try
@@ -26,7 +25,7 @@ public class CertHelper
 
 			store.Open(OpenFlags.OpenExistingOnly | OpenFlags.ReadWrite);
 
-			var data = await File.ReadAllBytesAsync(PathToPfx);
+			var data = await File.ReadAllBytesAsync(PathToPfx, ct);
 
 			var certificate = new X509Certificate2(data,
 				Settings.Get("PFXPassword"),
@@ -67,7 +66,7 @@ public class CertHelper
 		return vimexxApi;
 	}
 
-	async private static Task ClearDnsChallenges(StringBuilder log, IOrderContext orderContext, VimexxApi vimexxApi)
+	async private static Task ClearDnsChallenges(StringBuilder log, IOrderContext orderContext, VimexxApi vimexxApi, CancellationToken ct)
 	{
 		log.AppendLine($"\t\t\tClearDnsChallenges started");
 		var sw = Stopwatch.StartNew();
@@ -84,7 +83,7 @@ public class CertHelper
 
 		foreach (var domain in domains)
 		{
-			var totalresult = await vimexxApi.LetsEncryptAsync(domain, []);
+			var totalresult = await vimexxApi.LetsEncryptAsync(domain, [], ct);
 			if (totalresult == null)
 				log.AppendLine($"Error: ClearAuthorizations: vimexxApi.LetsEncryptAsync returns null on {domain}");
 		}
@@ -92,7 +91,7 @@ public class CertHelper
 		log.AppendLine($"\t\t\tClearDnsChallenges {sw.ElapsedMilliseconds}ms");
 	}
 
-	private async static Task CreateDnsChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi vimexxApi, IEnumerable<IAuthorizationContext> authorizations)
+	private async static Task CreateDnsChallenge(StringBuilder log, AcmeContext acmeContext, VimexxApi vimexxApi, IEnumerable<IAuthorizationContext> authorizations, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -123,7 +122,7 @@ public class CertHelper
 		{
 			var challenges = dict[domain];
 
-			var result = await vimexxApi.LetsEncryptAsync(domain, challenges);
+			var result = await vimexxApi.LetsEncryptAsync(domain, challenges, ct);
 
 			if (result == null)
 				log.AppendLine($"Error: vimexxApi.LetsEncryptAsync returns null on {domain}");
@@ -131,7 +130,7 @@ public class CertHelper
 
 		log.AppendLine($"\t\t\tCreateDnsChallenge (updating DNS entries) {sw.ElapsedMilliseconds}ms");
 
-		await Task.Delay(1000);
+		await Task.Delay(1000, ct);
 
 		sw.Restart();
 
@@ -149,7 +148,7 @@ public class CertHelper
 	}
 
 	private async static Task CreateHttpChallenge(StringBuilder log, string? LocalhostDir,
-		IEnumerable<IAuthorizationContext> authorizations)
+		IEnumerable<IAuthorizationContext> authorizations, CancellationToken ct)
 	{
 		if (LocalhostDir == null)
 		{
@@ -171,11 +170,11 @@ public class CertHelper
 			if (!System.IO.Directory.Exists(dir))
 				System.IO.Directory.CreateDirectory(dir);
 
-			await File.WriteAllTextAsync(challengePath, dnsChallenge.KeyAuthz);
+			await File.WriteAllTextAsync(challengePath, dnsChallenge.KeyAuthz, ct);
 
-			var text = await File.ReadAllTextAsync(@"..\web.config.xml");
+			var text = await File.ReadAllTextAsync(@"..\web.config.xml", ct);
 
-			await File.WriteAllTextAsync(webconfigPath, text);
+			await File.WriteAllTextAsync(webconfigPath, text, ct);
 
 			var res = await authz.Resource();
 
@@ -208,7 +207,7 @@ public class CertHelper
 	}
 
 	async private static Task<IOrderContext?> CreateChallenge(StringBuilder log,
-		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
+		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -221,9 +220,9 @@ public class CertHelper
 		var dict = new Dictionary<string, List<string>>();
 
 		if (vimexxApi != null)
-			await CreateDnsChallenge(log, acmeContext, vimexxApi, authorizations);
+			await CreateDnsChallenge(log, acmeContext, vimexxApi, authorizations, ct);
 		else
-			await CreateHttpChallenge(log, LocalhostDir, authorizations);
+			await CreateHttpChallenge(log, LocalhostDir, authorizations, ct);
 
 		log.AppendLine($"\t\t\t\tCreateChallenge Start Validating {sw.ElapsedMilliseconds}ms");
 
@@ -231,7 +230,7 @@ public class CertHelper
 
 		for (int i = 1; i <= 10; i++)
 		{
-			await Task.Delay(1000);
+			await Task.Delay(1000, ct);
 
 			List<AuthorizationStatus> statuses = [];
 
@@ -254,7 +253,7 @@ public class CertHelper
 
 					// cleanup when in error
 					if (vimexxApi != null)
-						await ClearDnsChallenges(log, orderContext, vimexxApi);
+						await ClearDnsChallenges(log, orderContext, vimexxApi, ct);
 					else
 						ClearHttpChallenge(log, orderContext, LocalhostDir);
 
@@ -271,7 +270,7 @@ public class CertHelper
 				log.AppendLine($"\t\t\t\tCreateChallenge all Valid {sw.ElapsedMilliseconds}ms");
 
 				if (vimexxApi != null)
-					await ClearDnsChallenges(log, orderContext, vimexxApi);
+					await ClearDnsChallenges(log, orderContext, vimexxApi, ct);
 				else
 					ClearHttpChallenge(log, orderContext, LocalhostDir);
 
@@ -282,7 +281,7 @@ public class CertHelper
 		log.AppendLine($"\t\t\t\tCreateChallenge ERROR timeout in {sw.ElapsedMilliseconds}ms (bailing out)");
 
 		if (vimexxApi != null)
-			await ClearDnsChallenges(log, orderContext, vimexxApi);
+			await ClearDnsChallenges(log, orderContext, vimexxApi, ct);
 		else
 			ClearHttpChallenge(log, orderContext, LocalhostDir);
 
@@ -291,11 +290,11 @@ public class CertHelper
 
 
 	async private static Task<IOrderContext?> ValidateOrderAsync(StringBuilder log,
-		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts)
+		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string[] hosts, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
-		var orderContext = await CreateChallenge(log, acmeContext, vimexxApi, LocalhostDir, hosts);
+		var orderContext = await CreateChallenge(log, acmeContext, vimexxApi, LocalhostDir, hosts, ct);
 
 		if (orderContext == null)
 			log.AppendLine($"\t\t\tValidateOrder ERROR (no orderContext) {sw.ElapsedMilliseconds}ms");
@@ -305,7 +304,7 @@ public class CertHelper
 		return orderContext;
 	}
 
-	async public static Task MailRapportAsync(StringBuilder log)
+	async public static Task MailRapportAsync(StringBuilder log, CancellationToken ct)
 	{
 		try
 		{
@@ -340,14 +339,14 @@ public class CertHelper
 					Password = Settings.Get("SmtpPassword"),
 				};
 			}
-			await smtpclient.SendMailAsync(msg);
+			await smtpclient.SendMailAsync(msg, ct);
 		}
 		catch (Exception eee)
 		{
 			log.AppendLine($"Error: mail : {eee.Message}");
 		}
 	}
-	async private static Task<AcmeContext> GetAcmeContextAsync(StringBuilder log, bool UseStaging)
+	async private static Task<AcmeContext> GetAcmeContextAsync(StringBuilder log, bool UseStaging, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -372,7 +371,7 @@ public class CertHelper
 
 		if (File.Exists(AccountKeyFile))
 		{
-			var pemKey = await File.ReadAllTextAsync(AccountKeyFile);
+			var pemKey = await File.ReadAllTextAsync(AccountKeyFile, ct);
 			var accountKey = KeyFactory.FromPem(pemKey);
 			var acmeContext = new AcmeContext(directoryUri, accountKey);
 			log.AppendLine($"\tGetAcmeContext (existing) {sw.ElapsedMilliseconds}ms");
@@ -383,7 +382,7 @@ public class CertHelper
 			var acmeContext = new AcmeContext(directoryUri);
 			_ = await acmeContext.NewAccount(contact, true);
 			var pemKey = acmeContext.AccountKey.ToPem();
-			await File.WriteAllTextAsync(AccountKeyFile, pemKey);
+			await File.WriteAllTextAsync(AccountKeyFile, pemKey, ct);
 			log.AppendLine($"\tGetAcmeContext (new) {sw.ElapsedMilliseconds}ms");
 			return acmeContext;
 		}
@@ -462,7 +461,7 @@ public class CertHelper
 	}
 
 	async private static Task ValidateDomainAsync(StringBuilder log,
-		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string domain, bool UseStaging)
+		AcmeContext acmeContext, VimexxApi? vimexxApi, string? LocalhostDir, string domain, bool UseStaging, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -481,7 +480,7 @@ public class CertHelper
 
 		log.AppendLine($"\t\tLetsEncryptDomain {domain} started");
 
-		var orderContext = await ValidateOrderAsync(log, acmeContext, vimexxApi, LocalhostDir, hosts);
+		var orderContext = await ValidateOrderAsync(log, acmeContext, vimexxApi, LocalhostDir, hosts, ct);
 
 		if (orderContext != null)
 		{
@@ -624,7 +623,7 @@ public class CertHelper
 	/// </summary>
 	/// <param name="log"></param>
 	/// <returns></returns>
-	async private static Task RefreshIISBindingsAsync(StringBuilder log, TypeChallenge challenge)
+	async private static Task RefreshIISBindingsAsync(StringBuilder log, TypeChallenge challenge, CancellationToken ct)
 	{
 		var sw = Stopwatch.StartNew();
 
@@ -689,7 +688,7 @@ public class CertHelper
 				if (fqdn != tld)
 					RemoveDomainCertsFromStore(log, tld);
 
-				await AddCertToStoreAsync(log, $"{tld}.pfx");
+				await AddCertToStoreAsync(log, $"{tld}.pfx", ct);
 
 				// add the new binding at the back of the collection
 				site.Bindings.Add(binding.BindingInformation, CertificateHash, Settings.Get("CertificateStoreName"), SslFlags.Sni);
@@ -707,14 +706,14 @@ public class CertHelper
 			catch (Exception eee)
 			{
 				log.AppendLine($"\t\tRefreshIISBindings ERROR ServerManager (IIS) CommitChanges {eee.Message} On Try: {intI}");
-				await Task.Delay(1000);
+				await Task.Delay(1000, ct);
 			}
 		}
 
 		log.AppendLine($"\tRefreshIISBindings OK {sw.ElapsedMilliseconds}mS");
 	}
 
-	async private static Task SaveLogAsync(string log)
+	async private static Task SaveLogAsync(string log, CancellationToken ct)
 	{
 		try
 		{
@@ -722,7 +721,7 @@ public class CertHelper
 			var dir = Path.GetDirectoryName(path) ?? @"c:\temp";
 			if (!System.IO.Directory.Exists(dir))
 				System.IO.Directory.CreateDirectory(dir);
-			await File.AppendAllTextAsync(path, log.ToString());
+			await File.AppendAllTextAsync(path, log.ToString(), ct);
 		}
 		catch
 		{
@@ -738,7 +737,7 @@ public class CertHelper
 
 
 	// cert staat op disk, en is valid, dan kan deze later in de store komen
-	private static async Task<bool> IsValidCertOnDiskAsync(StringBuilder log, string domain)
+	private static async Task<bool> IsValidCertOnDiskAsync(StringBuilder log, string domain, CancellationToken ct)
 	{
 
 		var pfxFileName = $"{domain}.pfx";
@@ -757,7 +756,7 @@ public class CertHelper
 
 			RemoveDomainCertsFromStore(log, domain);
 
-			var status = await AddCertToStoreAsync(log, pfxFileName);
+			var status = await AddCertToStoreAsync(log, pfxFileName, ct);
 
 			return status;
 		}
@@ -767,7 +766,7 @@ public class CertHelper
 	}
 
 	async private static Task ChallengeDomainsAsync(StringBuilder log,
-		List<string> domains, TypeChallenge challenge, bool UseStaging = false)
+		List<string> domains, TypeChallenge challenge, bool UseStaging, CancellationToken ct)
 	{
 		try
 		{
@@ -799,25 +798,25 @@ public class CertHelper
 
 			if (domains.Count > 0)
 			{
-				var acmeContext = await GetAcmeContextAsync(log, UseStaging);
+				var acmeContext = await GetAcmeContextAsync(log, UseStaging, ct);
 
 				VimexxApi? vimexxApi = null;
 
 				foreach (var domain in domains)
 				{
 					// check if cert on disk is valid date, continue
-					if (await IsValidCertOnDiskAsync(log, domain))
+					if (await IsValidCertOnDiskAsync(log, domain, ct))
 						continue;
 
 					switch (challenge)
 					{
 						case TypeChallenge.Http:
-							await ValidateDomainAsync(log, acmeContext, null, LocalhostDir, domain, UseStaging);
+							await ValidateDomainAsync(log, acmeContext, null, LocalhostDir, domain, UseStaging, ct);
 							break;
 						case TypeChallenge.Dns:
 							vimexxApi = await GetVimexxApiAsync(log); // login again for every domain! 2024-08-21
 							if (vimexxApi != null)
-								await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging);
+								await ValidateDomainAsync(log, acmeContext, vimexxApi, null, domain, UseStaging, ct);
 							else
 								log.AppendLine($"\tGetVimexxApi ERROR");
 							vimexxApi = null;
@@ -827,7 +826,7 @@ public class CertHelper
 							break;
 					}
 				}
-				await RefreshIISBindingsAsync(log, challenge);
+				await RefreshIISBindingsAsync(log, challenge, ct);
 			}
 
 			log.AppendLine($"ChallengeDomainsAsync ended (normal) {sw.Elapsed}");
@@ -838,7 +837,7 @@ public class CertHelper
 		}
 	}
 
-	async public static Task LetsEncryptDomainsAsync(bool UseStaging)
+	async public static Task LetsEncryptDomainsAsync(bool UseStaging, CancellationToken ct)
 	{
 		var log = new StringBuilder();
 
@@ -848,19 +847,19 @@ public class CertHelper
 		var domainsDns = Settings.Get<List<string>>("DnsChallenges");
 
 		if (domainsDns != null && domainsDns.Count > 0)
-			await ChallengeDomainsAsync(log, domainsDns, TypeChallenge.Dns, UseStaging);
+			await ChallengeDomainsAsync(log, domainsDns, TypeChallenge.Dns, UseStaging, ct);
 
 		var domainsHttp = Settings.Get<List<string>>("HttpChallenges");
 
 		if (domainsHttp != null && domainsHttp.Count > 0)
-			await ChallengeDomainsAsync(log, domainsHttp, TypeChallenge.Http, UseStaging);
+			await ChallengeDomainsAsync(log, domainsHttp, TypeChallenge.Http, UseStaging, ct);
 
 		if (UseStaging)
 			log.AppendLine("***STAGING***");
 
-		await MailRapportAsync(log);
+		await MailRapportAsync(log, ct);
 
-		await SaveLogAsync(log.ToString());
+		await SaveLogAsync(log.ToString(), ct);
 	}
 
 

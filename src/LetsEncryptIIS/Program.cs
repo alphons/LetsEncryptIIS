@@ -34,8 +34,11 @@ catch
 	admin = true;
 }
 
-if(admin)
-	await CertHelper.LetsEncryptDomainsAsync(staging);
+if (admin)
+{
+	var cts = new CancellationTokenSource();
+	await CertHelper.LetsEncryptDomainsAsync(staging, cts.Token);
+}
 else
 	Console.WriteLine("run as administator");
 
