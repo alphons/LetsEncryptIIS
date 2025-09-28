@@ -13,7 +13,8 @@ public enum RecordTypeEnum
 	SRV,
 	TLSA,
 	TXT,
-	CAA
+	CAA,
+	NS // as of 2025-09-28
 }
 
 public class DnsRecord
