@@ -135,27 +135,35 @@ public class VimexxApi(StringBuilder log)
 	{
 		var args = domainname.Split('.');
 
-		dns_records.Where(x => x.TTL == null).ToList().ForEach(x => x.TTL = 3600); // set everything to an hour
+		// TTL one hour
+		dns_records.Where(x => x.TTL == null).ToList().ForEach(x => x.TTL = 3600);
 
+		// set default smtp port for SRV records if not set
 		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_smtp._tcp.") && x.Prio == "0" && x.Port == null)
 			.ToList()
 			.ForEach(x => x.Port = 465);
+
+		// set default smtp port for SRV records if not set
 		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_smtp._tcp.") && x.Prio== "10" && x.Port == null)
 			.ToList()
 			.ForEach(x => x.Port = 587);
 
+		// set default imap for SRV records if not set
 		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_imap._tcp.") && x.Prio == "0" && x.Port == null)
 			.ToList()
 			.ForEach(x => x.Port = 143);
+
+		// set default imap port for SRV records if not set
 		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Name.StartsWith("_imap._tcp.") && x.Prio == "10" && x.Port == null)
 			.ToList()
 			.ForEach(x => x.Port = 993);
 
+		// set default Weight port for SRV records if not set
 		dns_records.Where(x => x.Type == RecordTypeEnum.SRV && x.Weight == null).ToList().ForEach(x => x.Weight = 0);
 
 		SaveDNSResponse? response = null;
 
-		for (int i = 0; i < 5; i++)
+		for (int i = 1; i <= 5; i++)
 		{
 			response = await RequestAsync<SaveDNSResponse>(HttpMethod.Put, "/whmcs/domain/dns", new { sld = args[^2], tld = args[^1], dns_records }, ct);
 			if (response != null)
